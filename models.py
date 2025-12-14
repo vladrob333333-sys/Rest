@@ -12,7 +12,6 @@ class User(UserMixin, db.Model):
     
     orders = db.relationship('Order', backref='user', lazy=True)
     views = db.relationship('PageView', backref='user', lazy=True)
-    reservations = db.relationship('Reservation', backref='user', lazy=True)
 
 class Category(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -40,11 +39,10 @@ class Order(db.Model):
     delivery_address = db.Column(db.Text)
     phone = db.Column(db.String(20))
     notes = db.Column(db.Text)
-    order_type = db.Column(db.String(20), default='delivery')  # delivery, dine_in
-    reservation_id = db.Column(db.Integer, db.ForeignKey('reservation.id'), nullable=True)
+    seats = db.Column(db.Integer, default=1)  # Количество мест
+    reservation_required = db.Column(db.Boolean, default=False)  # Нужна ли бронь
     
     items = db.relationship('OrderItem', backref='order', lazy=True, cascade='all, delete-orphan')
-    reservation = db.relationship('Reservation', backref='order', uselist=False)
 
 class OrderItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -59,22 +57,3 @@ class PageView(db.Model):
     page_url = db.Column(db.String(200), nullable=False)
     viewed_at = db.Column(db.DateTime, default=datetime.utcnow)
     ip_address = db.Column(db.String(45))
-
-class Table(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    table_number = db.Column(db.Integer, unique=True, nullable=False)
-    capacity = db.Column(db.Integer, default=4, nullable=False)  # количество мест
-    is_active = db.Column(db.Boolean, default=True)
-    
-    reservations = db.relationship('Reservation', backref='table', lazy=True)
-
-class Reservation(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    table_id = db.Column(db.Integer, db.ForeignKey('table.id'), nullable=False)
-    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=True)
-    start_time = db.Column(db.DateTime, nullable=False)
-    end_time = db.Column(db.DateTime, nullable=False)
-    guests_count = db.Column(db.Integer, nullable=False)
-    status = db.Column(db.String(20), default='active')  # active, completed, cancelled
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
