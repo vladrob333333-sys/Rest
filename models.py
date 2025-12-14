@@ -12,7 +12,7 @@ class User(UserMixin, db.Model):
     
     orders = db.relationship('Order', backref='user', lazy=True)
     views = db.relationship('PageView', backref='user', lazy=True)
-    table_reservations = db.relationship('TableReservation', backref='user', lazy=True)
+    reservations = db.relationship('Reservation', backref='user', lazy=True)
 
 class Category(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -40,11 +40,11 @@ class Order(db.Model):
     delivery_address = db.Column(db.Text)
     phone = db.Column(db.String(20))
     notes = db.Column(db.Text)
-    order_type = db.Column(db.String(20), default='delivery')  # delivery, pickup, dine_in
-    reservation_id = db.Column(db.Integer, db.ForeignKey('table_reservation.id'), nullable=True)
+    order_type = db.Column(db.String(20), default='delivery')  # delivery, dine_in
+    reservation_id = db.Column(db.Integer, db.ForeignKey('reservation.id'), nullable=True)
     
     items = db.relationship('OrderItem', backref='order', lazy=True, cascade='all, delete-orphan')
-    reservation = db.relationship('TableReservation', backref='order', uselist=False)
+    reservation = db.relationship('Reservation', backref='order', uselist=False)
 
 class OrderItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -60,21 +60,21 @@ class PageView(db.Model):
     viewed_at = db.Column(db.DateTime, default=datetime.utcnow)
     ip_address = db.Column(db.String(45))
 
-class RestaurantTable(db.Model):
+class Table(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     table_number = db.Column(db.Integer, unique=True, nullable=False)
-    seats = db.Column(db.Integer, nullable=False, default=4)
-    is_available = db.Column(db.Boolean, default=True)
+    capacity = db.Column(db.Integer, default=4, nullable=False)  # количество мест
+    is_active = db.Column(db.Boolean, default=True)
     
-    reservations = db.relationship('TableReservation', backref='table', lazy=True)
+    reservations = db.relationship('Reservation', backref='table', lazy=True)
 
-class TableReservation(db.Model):
+class Reservation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    table_id = db.Column(db.Integer, db.ForeignKey('restaurant_table.id'), nullable=False)
-    reservation_time = db.Column(db.DateTime, nullable=False)
-    duration_hours = db.Column(db.Integer, default=2)  # Продолжительность бронирования в часах
+    table_id = db.Column(db.Integer, db.ForeignKey('table.id'), nullable=False)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=True)
+    start_time = db.Column(db.DateTime, nullable=False)
+    end_time = db.Column(db.DateTime, nullable=False)
     guests_count = db.Column(db.Integer, nullable=False)
-    status = db.Column(db.String(20), default='reserved')  # reserved, cancelled, completed
+    status = db.Column(db.String(20), default='active')  # active, completed, cancelled
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    notes = db.Column(db.Text)
