@@ -393,8 +393,6 @@ window.processOrder = async function() {
 // Инициализация при загрузке страницы
 updateCartCount();
 
-// Добавить в конец файла
-
 // Валидация форм для администратора
 document.addEventListener('DOMContentLoaded', function() {
     // Валидация цены в формах добавления/редактирования блюд
@@ -444,3 +442,68 @@ document.addEventListener('click', function(event) {
         event.target.style.display = 'none';
     }
 });
+// Добавить в конец существующего файла
+
+// Функция для обновления статуса столиков
+window.updateTablesStatus = async function() {
+    try {
+        const response = await fetch('/api/tables/status');
+        const data = await response.json();
+        
+        // Обновляем информацию о свободных местах
+        if (document.getElementById('available-seats')) {
+            document.getElementById('available-seats').textContent = data.available_seats;
+            document.getElementById('available-tables').textContent = data.available_tables;
+        }
+        
+        // Если есть резервации, обновляем их список
+        if (data.upcoming_reservations && document.getElementById('upcoming-reservations')) {
+            const container = document.getElementById('upcoming-reservations');
+            let html = '<h4>Ближайшие бронирования:</h4>';
+            if (data.upcoming_reservations.length > 0) {
+                data.upcoming_reservations.forEach(res => {
+                    html += `
+                        <div class="reservation-item">
+                            <span class="reservation-time">${res.time}</span>
+                            <span class="reservation-details">${res.guests} гостей, столик ${res.table}</span>
+                        </div>
+                    `;
+                });
+            } else {
+                html += '<p class="no-reservations">Нет ближайших бронирований</p>';
+            }
+            container.innerHTML = html;
+        }
+    } catch (error) {
+        console.error('Ошибка обновления статуса столиков:', error);
+    }
+}
+
+// Функция для получения информации о столиках при оформлении заказа
+window.getTablesInfo = async function() {
+    try {
+        const response = await fetch('/api/tables/status');
+        return await response.json();
+    } catch (error) {
+        console.error('Ошибка получения информации о столиках:', error);
+        return null;
+    }
+}
+
+// Инициализация при загрузке страницы
+if (window.location.pathname.includes('/order')) {
+    document.addEventListener('DOMContentLoaded', function() {
+        // Обновляем информацию о столиках каждые 10 секунд
+        updateTablesStatus();
+        setInterval(updateTablesStatus, 10000);
+        
+        // Устанавливаем минимальную дату для бронирования
+        const now = new Date();
+        now.setHours(now.getHours() + 1);
+        const minDate = now.toISOString().slice(0, 16);
+        const reservationTimeInput = document.getElementById('reservation_time');
+        if (reservationTimeInput) {
+            reservationTimeInput.min = minDate;
+        }
+    });
+}
