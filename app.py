@@ -424,6 +424,50 @@ def api_admin_orders_update():
     
     return jsonify(result)
 
+# API для получения деталей заказа (для администратора)
+@app.route('/api/admin/order/<int:order_id>/details')
+@login_required
+def api_admin_order_details(order_id):
+    if current_user.role != 'admin':
+        abort(403)
+    
+    order = Order.query.get_or_404(order_id)
+    
+    # Собираем детали заказа
+    order_details = {
+        'id': order.id,
+        'user': {
+            'id': order.user.id,
+            'username': order.user.username,
+            'email': order.user.email
+        },
+        'total_amount': order.total_amount,
+        'status': order.status,
+        'created_at': order.created_at.strftime('%d.%m.%Y %H:%M'),
+        'delivery_address': order.delivery_address,
+        'phone': order.phone,
+        'notes': order.notes or 'Нет комментариев',
+        'items': [],
+        'items_count': len(order.items)
+    }
+    
+    # Добавляем информацию о позициях заказа
+    total_items = 0
+    for item in order.items:
+        item_total = item.price_at_time * item.quantity
+        total_items += item_total
+        
+        order_details['items'].append({
+            'id': item.id,
+            'name': item.menu_item.name,
+            'description': item.menu_item.description,
+            'quantity': item.quantity,
+            'price': item.price_at_time,
+            'total': item_total
+        })
+    
+    return jsonify(order_details)
+
 # API для получения статистики (для администратора) - ИСПРАВЛЕНО: исключаем отмененные заказы
 @app.route('/api/admin/stats')
 @login_required
