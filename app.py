@@ -22,16 +22,13 @@ login_manager.login_view = 'login'
 
 @login_manager.user_loader
 def load_user(user_id):
-    try:
-        return User.query.get(int(user_id))
-    except:
-        return None
+    return User.query.get(int(user_id))
 
-# Middleware для отслеживания просмотров страниц (с защитой от ошибок)
+# Middleware для отслеживания просмотров страниц
 @app.before_request
 def track_page_view():
-    try:
-        if current_user.is_authenticated and request.endpoint not in ['static']:
+    if current_user.is_authenticated and request.endpoint not in ['static']:
+        try:
             view = PageView(
                 user_id=current_user.id,
                 page_url=request.path,
@@ -40,8 +37,8 @@ def track_page_view():
             )
             db.session.add(view)
             db.session.commit()
-    except Exception as e:
-        db.session.rollback()
+        except:
+            db.session.rollback()
 
 # Вспомогательная функция для перевода статусов
 @app.context_processor
@@ -72,6 +69,7 @@ def forbidden_error(error):
 
 @app.errorhandler(500)
 def internal_error(error):
+    db.session.rollback()
     return render_template('errors/500.html'), 500
 
 # Главная страница
@@ -99,13 +97,9 @@ def index():
 # Страница меню
 @app.route('/menu')
 def menu():
-    try:
-        categories = Category.query.all()
-        menu_items = MenuItem.query.filter_by(is_available=True).all()
-        return render_template('menu.html', categories=categories, menu_items=menu_items)
-    except:
-        # Если база данных не готова, показываем пустое меню
-        return render_template('menu.html', categories=[], menu_items=[])
+    categories = Category.query.all()
+    menu_items = MenuItem.query.filter_by(is_available=True).all()
+    return render_template('menu.html', categories=categories, menu_items=menu_items)
 
 # Страница заказа
 @app.route('/order', methods=['GET', 'POST'])
@@ -372,6 +366,17 @@ def admin_orders():
     orders = Order.query.order_by(desc(Order.created_at)).all()
     return render_template('admin/orders.html', orders=orders)
 
+# Админ панель - управление меню
+@app.route('/admin/menu')
+@login_required
+def admin_menu():
+    if current_user.role != 'admin':
+        abort(403)
+    
+    categories = Category.query.all()
+    menu_items = MenuItem.query.all()
+    return render_template('admin/menu.html', categories=categories, menu_items=menu_items)
+
 # API для администратора - получение обновленных заказов
 @app.route('/api/admin/orders/update')
 @login_required
@@ -416,45 +421,25 @@ def api_admin_orders_update():
     
     return jsonify(result)
 
-# Функция для получения статистики (для администратора)
-def get_admin_stats():
-    total_orders = Order.query.filter(Order.status != 'cancelled').count()
-    pending_orders = Order.query.filter_by(status='pending').count()
-    
-    # Заказы за сегодня, исключая отмененные
-    today_orders = Order.query.filter(
-        func.date(Order.created_at) == date.today(),
-        Order.status != 'cancelled'
-    ).count()
-    
-    # Общая выручка, исключая отмененные заказы
-    total_revenue = db.session.query(func.sum(Order.total_amount))\
-        .filter(Order.status != 'cancelled')\
-        .scalar() or 0
-    
-    # Статистика по статусам
-    status_stats = {}
-    for status in ['pending', 'preparing', 'ready', 'delivered', 'cancelled']:
-        count = Order.query.filter_by(status=status).count()
-        status_stats[status] = count
-    
-    return {
-        'total_orders': total_orders,
-        'pending_orders': pending_orders,
-        'today_orders': today_orders,
-        'total_revenue': float(total_revenue),
-        'status_stats': status_stats
-    }
-
-# API для получения статистики (для администратора)
+# API для получения статистики (для администратора) - ИЗМЕНЕНО: исключаем отмененные заказы
 @app.route('/api/admin/stats')
 @login_required
 def api_admin_stats():
     if current_user.role != 'admin':
         abort(403)
     
-    stats = get_admin_stats()
-    return jsonify(stats)
+    # Исключаем отмененные заказы из статистики
+    total_orders = Order.query.filter(Order.status != 'cancelled').count()
+    pending_orders = Order.query.filter_by(status='pending').count()
+    today_orders = Order.query.filter(func.date(Order.created_at) == date.today()).filter(Order.status != 'cancelled').count()
+    total_revenue = db.session.query(func.sum(Order.total_amount)).filter(Order.status != 'cancelled').scalar() or 0
+    
+    return jsonify({
+        'total_orders': total_orders,
+        'pending_orders': pending_orders,
+        'today_orders': today_orders,
+        'total_revenue': float(total_revenue)
+    })
 
 # Обновление статуса заказа
 @app.route('/admin/order/<int:order_id>/status', methods=['POST'])
@@ -469,137 +454,286 @@ def update_order_status(order_id):
     if new_status in ['pending', 'preparing', 'ready', 'delivered', 'cancelled']:
         order.status = new_status
         db.session.commit()
-        
         return jsonify({'success': True})
     
     return jsonify({'error': 'Invalid status'}), 400
 
-# Страница управления меню для администратора
-@app.route('/admin/menu', methods=['GET', 'POST'])
+# Администратор - добавление новой категории
+@app.route('/admin/menu/category/add', methods=['POST'])
 @login_required
-def admin_menu():
+def admin_add_category():
     if current_user.role != 'admin':
         abort(403)
     
     if request.method == 'POST':
-        try:
-            name = request.form.get('name')
-            description = request.form.get('description')
-            price = float(request.form.get('price'))
-            category_id = int(request.form.get('category_id'))
-            image = request.form.get('image', '')
-            is_available = request.form.get('is_available') == 'on'
-            
-            # Валидация
-            if not name or price <= 0:
-                flash('Пожалуйста, заполните все обязательные поля корректно', 'danger')
-                return redirect(url_for('admin_menu'))
-            
-            # Создаем новый пункт меню
-            menu_item = MenuItem(
-                name=name,
-                description=description,
-                price=price,
-                category_id=category_id,
-                image=image,
-                is_available=is_available
-            )
-            
-            db.session.add(menu_item)
-            db.session.commit()
-            
-            flash('Пункт меню успешно добавлен!', 'success')
-            return redirect(url_for('admin_menu'))
-            
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Ошибка при добавлении пункта меню: {str(e)}', 'danger')
-            return redirect(url_for('admin_menu'))
-    
-    # GET запрос - показать страницу управления меню
-    categories = Category.query.all()
-    menu_items = MenuItem.query.order_by(MenuItem.category_id, MenuItem.name).all()
-    return render_template('admin/menu.html', categories=categories, menu_items=menu_items)
-
-# Редактирование пункта меню
-@app.route('/admin/menu/<int:item_id>/edit', methods=['POST'])
-@login_required
-def edit_menu_item(item_id):
-    if current_user.role != 'admin':
-        abort(403)
-    
-    try:
-        menu_item = MenuItem.query.get_or_404(item_id)
-        
-        menu_item.name = request.form.get('name')
-        menu_item.description = request.form.get('description')
-        menu_item.price = float(request.form.get('price'))
-        menu_item.category_id = int(request.form.get('category_id'))
-        menu_item.image = request.form.get('image', '')
-        menu_item.is_available = request.form.get('is_available') == 'on'
-        
-        db.session.commit()
-        
-        return jsonify({'success': True})
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-
-# Удаление пункта меню
-@app.route('/admin/menu/<int:item_id>/delete', methods=['POST'])
-@login_required
-def delete_menu_item(item_id):
-    if current_user.role != 'admin':
-        abort(403)
-    
-    try:
-        menu_item = MenuItem.query.get_or_404(item_id)
-        
-        # Проверяем, нет ли заказов с этим блюдом
-        order_items = OrderItem.query.filter_by(menu_item_id=item_id).first()
-        if order_items:
-            return jsonify({'error': 'Невозможно удалить блюдо, так как оно есть в заказах'}), 400
-        
-        db.session.delete(menu_item)
-        db.session.commit()
-        
-        return jsonify({'success': True})
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-
-# Добавление новой категории
-@app.route('/admin/categories/add', methods=['POST'])
-@login_required
-def add_category():
-    if current_user.role != 'admin':
-        abort(403)
-    
-    try:
         name = request.form.get('name')
-        description = request.form.get('description', '')
+        description = request.form.get('description')
         
         if not name:
-            return jsonify({'error': 'Название категории обязательно'}), 400
+            flash('Название категории обязательно', 'danger')
+            return redirect(url_for('admin_menu'))
         
         # Проверяем, нет ли уже категории с таким названием
         existing_category = Category.query.filter_by(name=name).first()
         if existing_category:
-            return jsonify({'error': 'Категория с таким названием уже существует'}), 400
+            flash('Категория с таким названием уже существует', 'danger')
+            return redirect(url_for('admin_menu'))
         
+        # Создаем новую категорию
         category = Category(name=name, description=description)
         db.session.add(category)
         db.session.commit()
         
-        return jsonify({'success': True, 'category_id': category.id})
+        flash('Категория успешно добавлена', 'success')
+        return redirect(url_for('admin_menu'))
+
+# Администратор - редактирование категории
+@app.route('/admin/menu/category/edit/<int:category_id>', methods=['GET', 'POST'])
+@login_required
+def admin_edit_category(category_id):
+    if current_user.role != 'admin':
+        abort(403)
+    
+    category = Category.query.get_or_404(category_id)
+    
+    if request.method == 'POST':
+        name = request.form.get('name')
+        description = request.form.get('description')
         
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        if not name:
+            flash('Название категории обязательно', 'danger')
+            return redirect(url_for('admin_menu'))
+        
+        # Проверяем, нет ли уже категории с таким названием (кроме текущей)
+        existing_category = Category.query.filter(Category.name == name, Category.id != category_id).first()
+        if existing_category:
+            flash('Категория с таким названием уже существует', 'danger')
+            return redirect(url_for('admin_menu'))
+        
+        # Обновляем категорию
+        category.name = name
+        category.description = description
+        db.session.commit()
+        
+        flash('Категория успешно обновлена', 'success')
+        return redirect(url_for('admin_menu'))
+    
+    return render_template('admin/edit_category.html', category=category)
+
+# Администратор - удаление категории
+@app.route('/admin/menu/category/delete/<int:category_id>', methods=['POST'])
+@login_required
+def admin_delete_category(category_id):
+    if current_user.role != 'admin':
+        abort(403)
+    
+    category = Category.query.get_or_404(category_id)
+    
+    # Проверяем, есть ли блюда в этой категории
+    if category.items:
+        flash('Невозможно удалить категорию, в которой есть блюда', 'danger')
+        return redirect(url_for('admin_menu'))
+    
+    db.session.delete(category)
+    db.session.commit()
+    
+    flash('Категория успешно удалена', 'success')
+    return redirect(url_for('admin_menu'))
+
+# Администратор - добавление нового блюда
+@app.route('/admin/menu/item/add', methods=['GET', 'POST'])
+@login_required
+def admin_add_item():
+    if current_user.role != 'admin':
+        abort(403)
+    
+    categories = Category.query.all()
+    
+    if request.method == 'POST':
+        name = request.form.get('name')
+        description = request.form.get('description')
+        price = request.form.get('price')
+        category_id = request.form.get('category_id')
+        image = request.form.get('image')
+        
+        # Валидация
+        errors = []
+        if not name:
+            errors.append('Название блюда обязательно')
+        if not price:
+            errors.append('Цена обязательна')
+        else:
+            try:
+                price = float(price)
+                if price <= 0:
+                    errors.append('Цена должна быть больше 0')
+            except ValueError:
+                errors.append('Цена должна быть числом')
+        
+        if not category_id:
+            errors.append('Выберите категорию')
+        
+        if errors:
+            for error in errors:
+                flash(error, 'danger')
+            return render_template('admin/add_item.html', categories=categories)
+        
+        # Создаем новое блюдо
+        menu_item = MenuItem(
+            name=name,
+            description=description,
+            price=price,
+            category_id=category_id,
+            image=image,
+            is_available=True
+        )
+        
+        db.session.add(menu_item)
+        db.session.commit()
+        
+        flash('Блюдо успешно добавлено', 'success')
+        return redirect(url_for('admin_menu'))
+    
+    return render_template('admin/add_item.html', categories=categories)
+
+# Администратор - редактирование блюда
+@app.route('/admin/menu/item/edit/<int:item_id>', methods=['GET', 'POST'])
+@login_required
+def admin_edit_item(item_id):
+    if current_user.role != 'admin':
+        abort(403)
+    
+    menu_item = MenuItem.query.get_or_404(item_id)
+    categories = Category.query.all()
+    
+    if request.method == 'POST':
+        name = request.form.get('name')
+        description = request.form.get('description')
+        price = request.form.get('price')
+        category_id = request.form.get('category_id')
+        image = request.form.get('image')
+        is_available = request.form.get('is_available') == 'on'
+        
+        # Валидация
+        errors = []
+        if not name:
+            errors.append('Название блюда обязательно')
+        if not price:
+            errors.append('Цена обязательна')
+        else:
+            try:
+                price = float(price)
+                if price <= 0:
+                    errors.append('Цена должна быть больше 0')
+            except ValueError:
+                errors.append('Цена должна быть числом')
+        
+        if not category_id:
+            errors.append('Выберите категорию')
+        
+        if errors:
+            for error in errors:
+                flash(error, 'danger')
+            return render_template('admin/edit_item.html', menu_item=menu_item, categories=categories)
+        
+        # Обновляем блюдо
+        menu_item.name = name
+        menu_item.description = description
+        menu_item.price = price
+        menu_item.category_id = category_id
+        menu_item.image = image
+        menu_item.is_available = is_available
+        
+        db.session.commit()
+        
+        flash('Блюдо успешно обновлено', 'success')
+        return redirect(url_for('admin_menu'))
+    
+    return render_template('admin/edit_item.html', menu_item=menu_item, categories=categories)
+
+# Администратор - удаление блюда
+@app.route('/admin/menu/item/delete/<int:item_id>', methods=['POST'])
+@login_required
+def admin_delete_item(item_id):
+    if current_user.role != 'admin':
+        abort(403)
+    
+    menu_item = MenuItem.query.get_or_404(item_id)
+    
+    # Проверяем, есть ли заказы с этим блюдом
+    if menu_item.order_items:
+        # Вместо удаления делаем блюдо недоступным
+        menu_item.is_available = False
+        db.session.commit()
+        flash('Блюдо отмечено как недоступное (есть связанные заказы)', 'warning')
+    else:
+        # Удаляем блюдо полностью
+        db.session.delete(menu_item)
+        db.session.commit()
+        flash('Блюдо успешно удалено', 'success')
+    
+    return redirect(url_for('admin_menu'))
+
+# Инициализация базы данных
+def init_db():
+    with app.app_context():
+        db.create_all()
+        
+        # Создаем тестовые данные, если их нет
+        if not Category.query.first():
+            # Категории
+            categories = [
+                Category(name='Закуски', description='Легкие закуски к столу'),
+                Category(name='Основные блюда', description='Горячие блюда'),
+                Category(name='Напитки', description='Холодные и горячие напитки'),
+                Category(name='Десерты', description='Сладкие блюда')
+            ]
+            
+            for category in categories:
+                db.session.add(category)
+            
+            db.session.flush()  # Получаем ID категорий
+            
+            # Пример блюд с ценами в BYN
+            menu_items = [
+                MenuItem(name='Брускетта', description='С помидорами и базиликом', price=12.5, category_id=1, image='bruschetta.jpg'),
+                MenuItem(name='Стейк', description='Говяжий стейк с овощами', price=42.5, category_id=2, image='steak.jpg'),
+                MenuItem(name='Салат Цезарь', description='С курицей и соусом', price=16.0, category_id=1, image='caesar.jpg'),
+                MenuItem(name='Кофе', description='Арабика 200мл', price=7.0, category_id=3, image='coffee.jpg'),
+                MenuItem(name='Тирамису', description='Итальянский десерт', price=14.0, category_id=4, image='tiramisu.jpg'),
+                MenuItem(name='Суп Том Ям', description='Тайский острый суп с креветками', price=19.5, category_id=2, image='tomyam.jpg'),
+                MenuItem(name='Паста Карбонара', description='С беконом и сливочным соусом', price=17.0, category_id=2, image='carbonara.jpg'),
+                MenuItem(name='Чизкейк', description='Классический чизкейк', price=12.5, category_id=4, image='cheesecake.jpg')
+            ]
+            
+            for item in menu_items:
+                db.session.add(item)
+            
+            # Создаем тестового администратора с белорусским email
+            if not User.query.filter_by(username='admin').first():
+                admin = User(
+                    username='admin',
+                    email='admin@gurman.by',
+                    password=generate_password_hash('admin123'),
+                    role='admin'
+                )
+                db.session.add(admin)
+            
+            # Создаем тестового пользователя с белорусским email
+            if not User.query.filter_by(username='user').first():
+                user = User(
+                    username='user',
+                    email='user@gurman.by',
+                    password=generate_password_hash('user123'),
+                    role='customer'
+                )
+                db.session.add(user)
+            
+            db.session.commit()
+        print("База данных инициализирована!")
 
 # Для запуска на Render
 if __name__ == '__main__':
+    init_db()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
