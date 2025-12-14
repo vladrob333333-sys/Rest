@@ -20,15 +20,23 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
+# Инициализация базы данных при старте приложения
+with app.app_context():
+    db.create_all()
+    print("База данных проверена/создана")
+
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    try:
+        return User.query.get(int(user_id))
+    except:
+        return None
 
-# Middleware для отслеживания просмотров страниц
+# Middleware для отслеживания просмотров страниц (с защитой от ошибок)
 @app.before_request
 def track_page_view():
-    if current_user.is_authenticated and request.endpoint not in ['static']:
-        try:
+    try:
+        if current_user.is_authenticated and request.endpoint not in ['static']:
             view = PageView(
                 user_id=current_user.id,
                 page_url=request.path,
@@ -37,8 +45,9 @@ def track_page_view():
             )
             db.session.add(view)
             db.session.commit()
-        except:
-            db.session.rollback()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Ошибка при отслеживании просмотра: {e}")
 
 # Вспомогательная функция для перевода статусов
 @app.context_processor
@@ -69,7 +78,6 @@ def forbidden_error(error):
 
 @app.errorhandler(500)
 def internal_error(error):
-    db.session.rollback()
     return render_template('errors/500.html'), 500
 
 # Главная страница
@@ -440,7 +448,7 @@ def get_admin_stats():
         'status_stats': status_stats
     }
 
-# API для получения статистики (для администратора) - только одно определение
+# API для получения статистики (для администратора)
 @app.route('/api/admin/stats')
 @login_required
 def api_admin_stats():
@@ -593,12 +601,10 @@ def add_category():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-# Инициализация базы данных
-def init_db():
-    with app.app_context():
-        db.create_all()
-        
-        # Создаем тестовые данные, если их нет
+# Создание тестовых данных
+def create_test_data():
+    try:
+        # Проверяем, есть ли уже данные
         if not Category.query.first():
             # Категории
             categories = [
@@ -611,24 +617,21 @@ def init_db():
             for category in categories:
                 db.session.add(category)
             
-            db.session.flush()  # Получаем ID категорий
+            db.session.flush()
             
             # Пример блюд с ценами в BYN
             menu_items = [
-                MenuItem(name='Брускетта', description='С помидорами и базиликом', price=12.5, category_id=1, image='bruschetta.jpg'),
-                MenuItem(name='Стейк', description='Говяжий стейк с овощами', price=42.5, category_id=2, image='steak.jpg'),
-                MenuItem(name='Салат Цезарь', description='С курицей и соусом', price=16.0, category_id=1, image='caesar.jpg'),
-                MenuItem(name='Кофе', description='Арабика 200мл', price=7.0, category_id=3, image='coffee.jpg'),
-                MenuItem(name='Тирамису', description='Итальянский десерт', price=14.0, category_id=4, image='tiramisu.jpg'),
-                MenuItem(name='Суп Том Ям', description='Тайский острый суп с креветками', price=19.5, category_id=2, image='tomyam.jpg'),
-                MenuItem(name='Паста Карбонара', description='С беконом и сливочным соусом', price=17.0, category_id=2, image='carbonara.jpg'),
-                MenuItem(name='Чизкейк', description='Классический чизкейк', price=12.5, category_id=4, image='cheesecake.jpg')
+                MenuItem(name='Брускетта', description='С помидорами и базиликом', price=12.5, category_id=1),
+                MenuItem(name='Стейк', description='Говяжий стейк с овощами', price=42.5, category_id=2),
+                MenuItem(name='Салат Цезарь', description='С курицей и соусом', price=16.0, category_id=1),
+                MenuItem(name='Кофе', description='Арабика 200мл', price=7.0, category_id=3),
+                MenuItem(name='Тирамису', description='Итальянский десерт', price=14.0, category_id=4)
             ]
             
             for item in menu_items:
                 db.session.add(item)
             
-            # Создаем тестового администратора с белорусским email
+            # Создаем тестового администратора
             if not User.query.filter_by(username='admin').first():
                 admin = User(
                     username='admin',
@@ -638,7 +641,7 @@ def init_db():
                 )
                 db.session.add(admin)
             
-            # Создаем тестового пользователя с белорусским email
+            # Создаем тестового пользователя
             if not User.query.filter_by(username='user').first():
                 user = User(
                     username='user',
@@ -649,10 +652,17 @@ def init_db():
                 db.session.add(user)
             
             db.session.commit()
-        print("База данных инициализирована!")
+            print("Тестовые данные созданы!")
+        else:
+            print("Тестовые данные уже существуют")
+    except Exception as e:
+        print(f"Ошибка при создании тестовых данных: {e}")
 
 # Для запуска на Render
 if __name__ == '__main__':
-    init_db()
+    # Создаем тестовые данные при запуске
+    with app.app_context():
+        create_test_data()
+    
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
