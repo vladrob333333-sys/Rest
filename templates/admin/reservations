@@ -1,0 +1,380 @@
+{% extends "base.html" %}
+
+{% block title %}Управление бронированиями - Ресторан "Гурман"{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="section-title">Управление бронированиями</h1>
+    
+    <div class="reservations-controls">
+        <button class="btn btn-success" onclick="showAddTableModal()">
+            <i class="fas fa-plus"></i> Добавить столик
+        </button>
+    </div>
+    
+    <div class="reservations-sections">
+        <!-- Активные бронирования -->
+        <div class="active-reservations">
+            <h2>Активные бронирования</h2>
+            <div class="reservations-grid">
+                {% for reservation in active_reservations %}
+                <div class="reservation-card">
+                    <div class="reservation-header">
+                        <h3>Столик №{{ reservation.table.table_number }}</h3>
+                        <span class="reservation-status status-active">Активно</span>
+                    </div>
+                    <div class="reservation-body">
+                        <p><strong>Клиент:</strong> {{ reservation.user.username }}</p>
+                        <p><strong>Время:</strong> {{ reservation.start_time.strftime('%d.%m.%Y %H:%M') }} - {{ reservation.end_time.strftime('%H:%M') }}</p>
+                        <p><strong>Гостей:</strong> {{ reservation.guests_count }}</p>
+                        {% if reservation.order %}
+                        <p><strong>Заказ:</strong> #{{ reservation.order.id }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="reservation-actions">
+                        <button class="btn btn-small btn-success" onclick="freeTable({{ reservation.id }})">
+                            <i class="fas fa-check"></i> Освободить
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- Столики -->
+        <div class="tables-section">
+            <h2>Столики ({{ tables|length }})</h2>
+            <div class="tables-grid">
+                {% for table in tables %}
+                <div class="table-card">
+                    <div class="table-header">
+                        <h3>Столик №{{ table.table_number }}</h3>
+                        <span class="table-capacity">{{ table.capacity }} мест</span>
+                    </div>
+                    <div class="table-status">
+                        {% if table.reservations %}
+                            {% set active_reservation = table.reservations|selectattr('status', 'equalto', 'active')|first %}
+                            {% if active_reservation %}
+                            <span class="status status-occupied">Занят</span>
+                            {% else %}
+                            <span class="status status-available">Свободен</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="status status-available">Свободен</span>
+                        {% endif %}
+                    </div>
+                    <div class="table-actions">
+                        <button class="btn btn-small btn-danger" onclick="removeTable({{ table.id }})">
+                            <i class="fas fa-trash"></i> Удалить
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно добавления столика -->
+<div id="addTableModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="closeAddTableModal()">&times;</span>
+        <h3>Добавить столик</h3>
+        <form id="add-table-form">
+            <div class="form-group">
+                <label for="table_number">Номер столика *</label>
+                <input type="number" id="table_number" name="table_number" class="form-control" min="1" required>
+            </div>
+            <div class="form-group">
+                <label for="table_capacity">Количество мест *</label>
+                <input type="number" id="table_capacity" name="table_capacity" class="form-control" min="1" value="4" required>
+            </div>
+            <div class="form-group">
+                <button type="button" class="btn btn-primary" onclick="addTable()">Добавить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .reservations-controls {
+        margin-bottom: 30px;
+    }
+    
+    .reservations-sections {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 30px;
+    }
+    
+    .reservations-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .reservation-card {
+        background-color: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        border-left: 5px solid var(--success);
+    }
+    
+    .reservation-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .reservation-header h3 {
+        margin: 0;
+        color: var(--primary-color);
+    }
+    
+    .reservation-status {
+        padding: 3px 10px;
+        border-radius: 15px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+    
+    .status-active {
+        background-color: var(--success);
+        color: white;
+    }
+    
+    .reservation-body p {
+        margin-bottom: 8px;
+        color: var(--text-color);
+    }
+    
+    .reservation-actions {
+        margin-top: 15px;
+    }
+    
+    .tables-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 15px;
+        margin-top: 20px;
+    }
+    
+    .table-card {
+        background-color: white;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        text-align: center;
+        border: 2px solid var(--gray-light);
+    }
+    
+    .table-card.occupied {
+        border-color: var(--danger);
+    }
+    
+    .table-header {
+        margin-bottom: 10px;
+    }
+    
+    .table-header h3 {
+        margin: 0 0 5px 0;
+        color: var(--primary-color);
+    }
+    
+    .table-capacity {
+        font-size: 0.9rem;
+        color: var(--gray);
+    }
+    
+    .table-status {
+        margin-bottom: 10px;
+    }
+    
+    .status-occupied {
+        background-color: var(--danger);
+        color: white;
+        padding: 3px 10px;
+        border-radius: 15px;
+        font-size: 0.8rem;
+    }
+    
+    .status-available {
+        background-color: var(--success);
+        color: white;
+        padding: 3px 10px;
+        border-radius: 15px;
+        font-size: 0.8rem;
+    }
+    
+    .table-actions {
+        margin-top: 10px;
+    }
+    
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+    }
+    
+    .modal-content {
+        background-color: white;
+        margin: 10% auto;
+        padding: 30px;
+        border-radius: 10px;
+        width: 90%;
+        max-width: 400px;
+        position: relative;
+    }
+    
+    .close-modal {
+        position: absolute;
+        right: 20px;
+        top: 20px;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: var(--gray);
+    }
+    
+    .close-modal:hover {
+        color: var(--primary-color);
+    }
+    
+    @media (max-width: 768px) {
+        .reservations-sections {
+            grid-template-columns: 1fr;
+        }
+        
+        .reservations-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<script>
+    // Освободить столик
+    async function freeTable(reservationId) {
+        if (!confirm('Освободить столик?')) return;
+        
+        try {
+            const response = await fetch('/admin/tables/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: 'free_table',
+                    reservation_id: reservationId
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showNotification('Столик освобожден', 'success');
+                setTimeout(() => {
+                    location.reload();
+                }, 1000);
+            } else {
+                showNotification(data.error || 'Ошибка', 'error');
+            }
+        } catch (error) {
+            showNotification('Ошибка сети', 'error');
+        }
+    }
+    
+    // Добавить столик
+    async function addTable() {
+        const tableNumber = document.getElementById('table_number').value;
+        const capacity = document.getElementById('table_capacity').value;
+        
+        if (!tableNumber || !capacity) {
+            showNotification('Заполните все поля', 'error');
+            return;
+        }
+        
+        try {
+            const response = await fetch('/admin/tables/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: 'add_table',
+                    table_number: parseInt(tableNumber),
+                    capacity: parseInt(capacity)
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showNotification('Столик добавлен', 'success');
+                closeAddTableModal();
+                setTimeout(() => {
+                    location.reload();
+                }, 1000);
+            } else {
+                showNotification(data.error || 'Ошибка', 'error');
+            }
+        } catch (error) {
+            showNotification('Ошибка сети', 'error');
+        }
+    }
+    
+    // Удалить столик
+    async function removeTable(tableId) {
+        if (!confirm('Удалить столик? Все связанные бронирования будут отменены.')) return;
+        
+        try {
+            const response = await fetch('/admin/tables/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: 'remove_table',
+                    table_id: tableId
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showNotification('Столик удален', 'success');
+                setTimeout(() => {
+                    location.reload();
+                }, 1000);
+            } else {
+                showNotification(data.error || 'Ошибка', 'error');
+            }
+        } catch (error) {
+            showNotification('Ошибка сети', 'error');
+        }
+    }
+    
+    // Управление модальным окном
+    function showAddTableModal() {
+        document.getElementById('addTableModal').style.display = 'block';
+    }
+    
+    function closeAddTableModal() {
+        document.getElementById('addTableModal').style.display = 'none';
+    }
+    
+    // Закрытие модального окна при клике вне его
+    window.addEventListener('click', function(event) {
+        const modal = document.getElementById('addTableModal');
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+</script>
+{% endblock %}
