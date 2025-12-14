@@ -363,34 +363,22 @@ def admin_orders():
     if current_user.role != 'admin':
         abort(403)
     
+    # Считаем статистику с исключением отмененных заказов
+    total_orders = Order.query.filter(Order.status != 'cancelled').count()
+    pending_orders = Order.query.filter_by(status='pending').count()
+    today_orders = Order.query.filter(func.date(Order.created_at) == date.today())\
+                              .filter(Order.status != 'cancelled').count()
+    total_revenue = db.session.query(func.sum(Order.total_amount))\
+                              .filter(Order.status != 'cancelled').scalar() or 0
+    
     orders = Order.query.order_by(desc(Order.created_at)).all()
     
-    # Рассчитываем статистику сразу для отображения на странице
-    total_revenue = db.session.query(func.sum(Order.total_amount))\
-                              .filter(Order.status != 'cancelled')\
-                              .scalar() or 0
-    
-    active_orders_count = Order.query.filter(Order.status != 'cancelled').count()
-    cancelled_revenue = db.session.query(func.sum(Order.total_amount))\
-                                 .filter(Order.status == 'cancelled')\
-                                 .scalar() or 0
-    
     return render_template('admin/orders.html', 
-                         orders=orders, 
-                         total_revenue=total_revenue,
-                         active_orders_count=active_orders_count,
-                         cancelled_revenue=cancelled_revenue)
-
-# Админ панель - управление меню
-@app.route('/admin/menu')
-@login_required
-def admin_menu():
-    if current_user.role != 'admin':
-        abort(403)
-    
-    categories = Category.query.all()
-    menu_items = MenuItem.query.all()
-    return render_template('admin/menu.html', categories=categories, menu_items=menu_items)
+                         orders=orders,
+                         total_orders=total_orders,
+                         pending_orders=pending_orders,
+                         today_orders=today_orders,
+                         total_revenue=total_revenue)
 
 # API для администратора - получение обновленных заказов
 @app.route('/api/admin/orders/update')
@@ -436,41 +424,26 @@ def api_admin_orders_update():
     
     return jsonify(result)
 
-# API для получения статистики (для администратора)
+# API для получения статистики (для администратора) - ИСПРАВЛЕНО: исключаем отмененные заказы
 @app.route('/api/admin/stats')
 @login_required
 def api_admin_stats():
     if current_user.role != 'admin':
         abort(403)
     
-    # ВСЕ заказы (включая отмененные для общего счета)
-    total_orders = Order.query.count()
-    
-    # Только активные заказы для статистики
-    active_orders = Order.query.filter(Order.status != 'cancelled')
-    
-    # Заказы на сегодня (исключая отмененные)
-    today_active_orders = active_orders.filter(func.date(Order.created_at) == date.today())
-    
-    # Общая выручка (исключая отмененные)
+    # Исключаем отмененные заказы из статистики
+    total_orders = Order.query.filter(Order.status != 'cancelled').count()
+    pending_orders = Order.query.filter_by(status='pending').count()
+    today_orders = Order.query.filter(func.date(Order.created_at) == date.today())\
+                              .filter(Order.status != 'cancelled').count()
     total_revenue = db.session.query(func.sum(Order.total_amount))\
-                              .filter(Order.status != 'cancelled')\
-                              .scalar() or 0
-    
-    # Отмененные заказы для информации
-    cancelled_orders = Order.query.filter_by(status='cancelled').count()
-    cancelled_revenue = db.session.query(func.sum(Order.total_amount))\
-                                 .filter(Order.status == 'cancelled')\
-                                 .scalar() or 0
+                              .filter(Order.status != 'cancelled').scalar() or 0
     
     return jsonify({
-        'total_orders': total_orders,  # Все заказы
-        'active_orders': active_orders.count(),  # Активные заказы
-        'pending_orders': Order.query.filter_by(status='pending').count(),
-        'today_orders': today_active_orders.count(),
-        'total_revenue': float(total_revenue),  # Только неотмененные
-        'cancelled_orders': cancelled_orders,
-        'cancelled_revenue': float(cancelled_revenue)
+        'total_orders': total_orders,
+        'pending_orders': pending_orders,
+        'today_orders': today_orders,
+        'total_revenue': float(total_revenue)
     })
 
 # Обновление статуса заказа
@@ -482,10 +455,17 @@ def update_order_status(order_id):
     
     order = Order.query.get_or_404(order_id)
     new_status = request.json.get('status')
+    old_status = order.status  # Сохраняем старый статус для логирования
     
     if new_status in ['pending', 'preparing', 'ready', 'delivered', 'cancelled']:
         order.status = new_status
         db.session.commit()
+        
+        # Логируем изменение статуса
+        print(f"Статус заказа #{order_id} изменен: {old_status} -> {new_status}")
+        if old_status != 'cancelled' and new_status == 'cancelled':
+            print(f"Заказ #{order_id} отменен. Сумма {order.total_amount} BYN вычтена из общей выручки.")
+        
         return jsonify({'success': True})
     
     return jsonify({'error': 'Invalid status'}), 400
@@ -705,6 +685,17 @@ def admin_delete_item(item_id):
         flash('Блюдо успешно удалено', 'success')
     
     return redirect(url_for('admin_menu'))
+
+# Админ панель - управление меню
+@app.route('/admin/menu')
+@login_required
+def admin_menu():
+    if current_user.role != 'admin':
+        abort(403)
+    
+    categories = Category.query.all()
+    menu_items = MenuItem.query.all()
+    return render_template('admin/menu.html', categories=categories, menu_items=menu_items)
 
 # Инициализация базы данных
 def init_db():
