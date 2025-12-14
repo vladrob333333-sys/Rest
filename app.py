@@ -446,9 +446,25 @@ def admin_orders():
     if current_user.role != 'admin':
         abort(403)
     
-    orders = Order.query.order_by(desc(Order.created_at)).all()
-    return render_template('admin/orders.html', orders=orders)
-
+    orders = Order.query.order_by(Order.created_at.desc()).all()
+    
+    # Рассчитываем статистику (исключая отмененные заказы)
+    total_revenue = db.session.query(db.func.sum(Order.total_amount)) \
+        .filter(Order.status != 'cancelled') \
+        .scalar() or 0.0
+    
+    total_orders = Order.query.filter(Order.status != 'cancelled').count()
+    pending_orders = Order.query.filter_by(status='pending').count()
+    processing_orders = Order.query.filter_by(status='processing').count()
+    completed_orders = Order.query.filter_by(status='completed').count()
+    
+    return render_template('admin/orders.html', 
+                          orders=orders,
+                          total_revenue=total_revenue,
+                          total_orders=total_orders,
+                          pending_orders=pending_orders,
+                          processing_orders=processing_orders,
+                          completed_orders=completed_orders)
 # Детали заказа для администратора
 @app.route('/admin/order/<int:order_id>')
 @login_required
