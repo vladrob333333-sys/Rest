@@ -3,6 +3,8 @@ from flask_login import UserMixin
 from datetime import datetime
 
 class User(UserMixin, db.Model):
+    __tablename__ = 'user'
+    
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
@@ -14,12 +16,16 @@ class User(UserMixin, db.Model):
     views = db.relationship('PageView', backref='user', lazy=True)
 
 class Category(db.Model):
+    __tablename__ = 'category'
+    
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
     items = db.relationship('MenuItem', backref='category', lazy=True)
 
 class MenuItem(db.Model):
+    __tablename__ = 'menu_item'
+    
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
@@ -31,6 +37,8 @@ class MenuItem(db.Model):
     order_items = db.relationship('OrderItem', backref='menu_item', lazy=True)
 
 class Order(db.Model):
+    __tablename__ = 'order'
+    
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     total_amount = db.Column(db.Float, nullable=False)
@@ -43,6 +51,8 @@ class Order(db.Model):
     items = db.relationship('OrderItem', backref='order', lazy=True, cascade='all, delete-orphan')
 
 class OrderItem(db.Model):
+    __tablename__ = 'order_item'
+    
     id = db.Column(db.Integer, primary_key=True)
     order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=False)
     menu_item_id = db.Column(db.Integer, db.ForeignKey('menu_item.id'), nullable=False)
@@ -50,6 +60,8 @@ class OrderItem(db.Model):
     price_at_time = db.Column(db.Float, nullable=False)
 
 class PageView(db.Model):
+    __tablename__ = 'page_view'
+    
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     page_url = db.Column(db.String(200), nullable=False)
