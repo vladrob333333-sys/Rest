@@ -6,32 +6,11 @@
 <div class="container">
     <h1 class="section-title">Оформление заказа</h1>
     
-    <!-- Информация о столиках (обновляется каждые 10 сек) -->
-    <div class="tables-info-card">
-        <h3><i class="fas fa-chair"></i> Информация о столиках</h3>
-        <div class="tables-stats" id="tables-stats">
-            <div class="stat-item">
-                <span class="stat-label">Всего столиков:</span>
-                <span class="stat-value">{{ total_tables }}</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Всего мест:</span>
-                <span class="stat-value">{{ total_seats }}</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Свободно столиков:</span>
-                <span class="stat-value" id="available-tables">{{ available_tables }}</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Свободно мест:</span>
-                <span class="stat-value" id="available-seats">{{ available_seats }}</span>
-            </div>
-        </div>
-        <div class="upcoming-reservations" id="upcoming-reservations">
-            <h4>Ближайшие бронирования:</h4>
-            <div id="reservations-list">
-                <!-- Список будет заполнен через JavaScript -->
-            </div>
+    <div class="order-type-selector">
+        <div class="order-type-tabs">
+            <button class="order-type-btn active" data-type="delivery">Доставка</button>
+            <button class="order-type-btn" data-type="pickup">Самовывоз</button>
+            <button class="order-type-btn" data-type="dine_in">В ресторане</button>
         </div>
     </div>
     
@@ -55,172 +34,203 @@
         <div class="order-form">
             <h2>Детали заказа</h2>
             
-            <!-- Выбор типа заказа -->
-            <div class="form-group">
-                <label>Тип заказа:</label>
-                <div class="order-type-selector">
-                    <button type="button" class="order-type-btn active" data-type="delivery" onclick="selectOrderType('delivery')">
-                        <i class="fas fa-truck"></i> Доставка
-                    </button>
-                    <button type="button" class="order-type-btn" data-type="reservation" onclick="selectOrderType('reservation')">
-                        <i class="fas fa-utensils"></i> Бронирование столика
-                    </button>
-                </div>
-            </div>
-            
-            <form id="order-form" data-validate>
-                <!-- Поля для доставки -->
-                <div id="delivery-fields" class="delivery-fields">
+            <!-- Форма для доставки/самовывоза -->
+            <div id="delivery-form" class="order-form-section active">
+                <form id="order-form" data-validate>
                     <div class="form-group">
                         <label for="delivery_address">Адрес доставки *</label>
                         <input type="text" 
                                id="delivery_address" 
                                name="delivery_address" 
                                class="form-control" 
-                               required
                                placeholder="Укажите адрес доставки">
                         <span class="form-error"></span>
                     </div>
-                </div>
-                
-                <!-- Поля для бронирования -->
-                <div id="reservation-fields" class="reservation-fields" style="display: none;">
+                    
                     <div class="form-group">
-                        <label for="guests_count">Количество гостей *</label>
-                        <select id="guests_count" name="guests_count" class="form-control">
-                            <option value="1">1 гость</option>
-                            <option value="2">2 гостя</option>
-                            <option value="3">3 гостя</option>
-                            <option value="4">4 гостя</option>
-                            <option value="5">5 гостей</option>
-                            <option value="6">6 гостей</option>
-                            <option value="7">7 гостей</option>
-                            <option value="8">8 гостей</option>
-                            <option value="9">9 гостей</option>
-                            <option value="10">10 гостей</option>
-                        </select>
+                        <label for="phone">Телефон *</label>
+                        <input type="tel" 
+                               id="phone" 
+                               name="phone" 
+                               class="form-control" 
+                               required
+                               placeholder="+375 (XX) XXX-XX-XX">
+                        <span class="form-error"></span>
                     </div>
                     
+                    <div class="form-group">
+                        <label for="notes">Комментарий к заказу</label>
+                        <textarea id="notes" 
+                                  name="notes" 
+                                  class="form-control" 
+                                  rows="4"
+                                  placeholder="Укажите особые пожелания, время доставки и т.д."></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <button type="button" class="btn btn-primary btn-block" onclick="processOrder('delivery')">
+                            Оформить заказ
+                        </button>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- Форма для заказа в ресторане -->
+            <div id="dine-in-form" class="order-form-section">
+                <div class="tables-info">
+                    <h4>Информация о столиках</h4>
+                    <div class="availability-info">
+                        <div class="availability-item">
+                            <i class="fas fa-chair"></i>
+                            <span>Свободных столиков: <span id="available-tables">{{ available_tables }}</span></span>
+                        </div>
+                        <div class="availability-item">
+                            <i class="fas fa-user-friends"></i>
+                            <span>Свободных мест: <span id="available-seats">{{ available_seats }}</span></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <form id="dine-in-order-form" data-validate>
                     <div class="form-group">
                         <label for="reservation_time">Время бронирования *</label>
                         <input type="datetime-local" 
                                id="reservation_time" 
                                name="reservation_time" 
                                class="form-control" 
+                               required
                                min="{{ now().strftime('%Y-%m-%dT%H:%M') }}">
+                        <span class="form-error"></span>
                     </div>
+                    
+                    <div class="form-group">
+                        <label for="guests_count">Количество гостей *</label>
+                        <input type="number" 
+                               id="guests_count" 
+                               name="guests_count" 
+                               class="form-control" 
+                               required
+                               min="1" 
+                               max="40"
+                               placeholder="Сколько человек">
+                        <span class="form-error"></span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="dine_in_phone">Телефон *</label>
+                        <input type="tel" 
+                               id="dine_in_phone" 
+                               name="phone" 
+                               class="form-control" 
+                               required
+                               placeholder="+375 (XX) XXX-XX-XX">
+                        <span class="form-error"></span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="dine_in_notes">Комментарий к заказу</label>
+                        <textarea id="dine_in_notes" 
+                                  name="notes" 
+                                  class="form-control" 
+                                  rows="4"
+                                  placeholder="Укажите особые пожелания, предпочтения по столику и т.д."></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <button type="button" class="btn btn-primary btn-block" onclick="processOrder('dine_in')">
+                            Забронировать столик и оформить заказ
+                        </button>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- Форма для самовывоза -->
+            <div id="pickup-form" class="order-form-section">
+                <div class="pickup-info">
+                    <h4>Информация о самовывозе</h4>
+                    <p>Адрес: г. Минск, ул. Победы, 25</p>
+                    <p>Время работы: Пн-Вс: 10:00 - 23:00</p>
+                    <p>Заказы на самовывоз готовятся в течение 30-40 минут</p>
                 </div>
                 
-                <!-- Общие поля -->
-                <div class="form-group">
-                    <label for="phone">Телефон *</label>
-                    <input type="tel" 
-                           id="phone" 
-                           name="phone" 
-                           class="form-control" 
-                           required
-                           pattern="[\+]\d{1,3}\s?\(?\d{1,4}\)?[\s.-]?\d{1,4}[\s.-]?\d{1,4}[\s.-]?\d{1,9}"
-                           placeholder="+375 (XX) XXX-XX-XX">
-                    <span class="form-error"></span>
-                </div>
-                
-                <div class="form-group">
-                    <label for="notes">Комментарий к заказу</label>
-                    <textarea id="notes" 
-                              name="notes" 
-                              class="form-control" 
-                              rows="4"
-                              placeholder="Укажите особые пожелания, время доставки, аллергии и т.д."></textarea>
-                </div>
-                
-                <div class="form-group">
-                    <button type="button" class="btn btn-primary btn-block" onclick="processOrder()">
-                        Оформить заказ
-                    </button>
-                </div>
-                
-                <div class="form-notice">
-                    <p>* Поля обязательные для заполнения</p>
-                    <p>После оформления заказа с вами свяжется оператор для подтверждения</p>
-                </div>
-            </form>
+                <form id="pickup-order-form" data-validate>
+                    <div class="form-group">
+                        <label for="pickup_time">Время самовывоза *</label>
+                        <input type="datetime-local" 
+                               id="pickup_time" 
+                               name="pickup_time" 
+                               class="form-control" 
+                               required
+                               min="{{ now().strftime('%Y-%m-%dT%H:%M') }}">
+                        <span class="form-error"></span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="pickup_phone">Телефон *</label>
+                        <input type="tel" 
+                               id="pickup_phone" 
+                               name="phone" 
+                               class="form-control" 
+                               required
+                               placeholder="+375 (XX) XXX-XX-XX">
+                        <span class="form-error"></span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="pickup_notes">Комментарий к заказу</label>
+                        <textarea id="pickup_notes" 
+                                  name="notes" 
+                                  class="form-control" 
+                                  rows="4"
+                                  placeholder="Укажите особые пожелания"></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <button type="button" class="btn btn-primary btn-block" onclick="processOrder('pickup')">
+                            Оформить заказ на самовывоз
+                        </button>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="form-notice">
+                <p>* Поля обязательные для заполнения</p>
+                <p>После оформления заказа с вами свяжется оператор для подтверждения</p>
+            </div>
         </div>
     </div>
 </div>
 
 <style>
-    .tables-info-card {
-        background-color: white;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+    .order-type-selector {
         margin-bottom: 30px;
-        border-left: 5px solid var(--primary-color);
     }
     
-    .tables-info-card h3 {
+    .order-type-tabs {
         display: flex;
-        align-items: center;
         gap: 10px;
-        margin-bottom: 20px;
-        color: var(--primary-color);
+        border-bottom: 2px solid var(--gray-light);
+        padding-bottom: 10px;
     }
     
-    .tables-stats {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 15px;
-        margin-bottom: 20px;
-    }
-    
-    .stat-item {
-        background-color: var(--background-color);
-        padding: 15px;
-        border-radius: 8px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    
-    .stat-label {
+    .order-type-btn {
+        padding: 10px 20px;
+        background-color: var(--gray-light);
+        border: none;
+        border-radius: 5px 5px 0 0;
+        cursor: pointer;
         font-weight: 500;
-        color: var(--gray-dark);
+        transition: all 0.3s;
     }
     
-    .stat-value {
-        font-weight: 700;
-        font-size: 1.2rem;
-        color: var(--primary-color);
+    .order-type-btn.active {
+        background-color: var(--primary-color);
+        color: white;
     }
     
-    .upcoming-reservations {
-        border-top: 1px solid var(--gray-light);
-        padding-top: 15px;
-    }
-    
-    .upcoming-reservations h4 {
-        margin-bottom: 10px;
-        color: var(--heading-color);
-    }
-    
-    .reservation-item {
-        display: flex;
-        justify-content: space-between;
-        padding: 8px 0;
-        border-bottom: 1px solid var(--gray-light);
-        font-size: 0.9rem;
-    }
-    
-    .reservation-item:last-child {
-        border-bottom: none;
-    }
-    
-    .reservation-time {
-        font-weight: 500;
-    }
-    
-    .reservation-details {
-        color: var(--gray);
+    .order-type-btn:hover:not(.active) {
+        background-color: var(--gray);
+        color: white;
     }
     
     .cart-container {
@@ -335,39 +345,42 @@
         color: var(--gray);
     }
     
-    .order-type-selector {
-        display: flex;
-        gap: 10px;
+    .order-form-section {
+        display: none;
+    }
+    
+    .order-form-section.active {
+        display: block;
+    }
+    
+    .tables-info, .pickup-info {
+        background-color: var(--background-color);
+        padding: 15px;
+        border-radius: 8px;
         margin-bottom: 20px;
     }
     
-    .order-type-btn {
-        flex: 1;
-        padding: 15px;
-        border: 2px solid var(--gray-light);
-        background-color: white;
-        border-radius: 8px;
-        cursor: pointer;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 8px;
-        font-weight: 500;
-        transition: all 0.3s;
-    }
-    
-    .order-type-btn.active {
-        border-color: var(--primary-color);
-        background-color: rgba(46, 139, 87, 0.1);
+    .tables-info h4, .pickup-info h4 {
+        margin-bottom: 10px;
         color: var(--primary-color);
     }
     
-    .order-type-btn:hover:not(.active) {
-        border-color: var(--primary-color);
+    .availability-info {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
     }
     
-    .order-type-btn i {
-        font-size: 1.5rem;
+    .availability-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 1rem;
+    }
+    
+    .availability-item i {
+        color: var(--primary-color);
+        font-size: 1.2rem;
     }
     
     @media (max-width: 768px) {
@@ -384,12 +397,12 @@
             justify-content: flex-start;
         }
         
-        .tables-stats {
-            grid-template-columns: 1fr;
+        .order-type-tabs {
+            flex-direction: column;
         }
         
-        .order-type-selector {
-            flex-direction: column;
+        .order-type-btn {
+            border-radius: 5px;
         }
     }
 </style>
@@ -397,133 +410,181 @@
 
 {% block scripts %}
 <script>
-    let currentOrderType = 'delivery';
-    
     document.addEventListener('DOMContentLoaded', function() {
         // Инициализация корзины
         initCart();
+        
+        // Рендер корзины
         renderCart();
         
-        // Обновление информации о столиках каждые 10 секунд
-        updateTablesInfo();
-        setInterval(updateTablesInfo, 10000);
+        // Инициализация табов типа заказа
+        initOrderTypeTabs();
         
-        // Устанавливаем минимальную дату для бронирования (текущее время + 1 час)
-        const now = new Date();
-        now.setHours(now.getHours() + 1);
-        const minDate = now.toISOString().slice(0, 16);
-        document.getElementById('reservation_time').min = minDate;
+        // Инициализация маски телефона
+        initPhoneMask();
+        
+        // Запуск обновления информации о столиках
+        startTableAvailabilityUpdates();
     });
     
-    // Функция выбора типа заказа
-    window.selectOrderType = function(type) {
-        currentOrderType = type;
+    // Инициализация табов типа заказа
+    function initOrderTypeTabs() {
+        const tabs = document.querySelectorAll('.order-type-btn');
+        const forms = document.querySelectorAll('.order-form-section');
         
-        // Обновляем активную кнопку
-        document.querySelectorAll('.order-type-btn').forEach(btn => {
-            btn.classList.remove('active');
-            if (btn.getAttribute('data-type') === type) {
-                btn.classList.add('active');
-            }
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                // Убираем активный класс у всех табов
+                tabs.forEach(t => t.classList.remove('active'));
+                // Добавляем активный класс текущему табу
+                this.classList.add('active');
+                
+                // Скрываем все формы
+                forms.forEach(form => form.classList.remove('active'));
+                
+                // Показываем соответствующую форму
+                const type = this.getAttribute('data-type');
+                document.getElementById(`${type}-form`).classList.add('active');
+            });
         });
-        
-        // Показываем/скрываем соответствующие поля
-        if (type === 'delivery') {
-            document.getElementById('delivery-fields').style.display = 'block';
-            document.getElementById('reservation-fields').style.display = 'none';
-            document.getElementById('delivery_address').required = true;
-        } else {
-            document.getElementById('delivery-fields').style.display = 'none';
-            document.getElementById('reservation-fields').style.display = 'block';
-            document.getElementById('delivery_address').required = false;
-        }
     }
     
-    // Функция обновления информации о столиках
-    window.updateTablesInfo = async function() {
-        try {
-            const response = await fetch('/api/tables/status');
-            const data = await response.json();
-            
-            // Обновляем статистику
-            document.getElementById('available-tables').textContent = data.available_tables;
-            document.getElementById('available-seats').textContent = data.available_seats;
-            
-            // Обновляем список бронирований
-            const reservationsList = document.getElementById('reservations-list');
-            if (data.upcoming_reservations && data.upcoming_reservations.length > 0) {
-                let html = '';
-                data.upcoming_reservations.forEach(res => {
-                    html += `
-                        <div class="reservation-item">
-                            <span class="reservation-time">${res.time}</span>
-                            <span class="reservation-details">${res.guests} гостей, столик ${res.table}</span>
-                        </div>
-                    `;
-                });
-                reservationsList.innerHTML = html;
-            } else {
-                reservationsList.innerHTML = '<p class="no-reservations">Нет ближайших бронирований</p>';
-            }
-        } catch (error) {
-            console.error('Ошибка при обновлении информации о столиках:', error);
-        }
+    // Инициализация маски телефона
+    function initPhoneMask() {
+        const phoneInputs = document.querySelectorAll('input[type="tel"]');
+        
+        phoneInputs.forEach(input => {
+            input.addEventListener('input', function(e) {
+                let value = e.target.value.replace(/\D/g, '');
+                if (value.length > 0) {
+                    if (!value.startsWith('375')) {
+                        value = '375' + value;
+                    }
+                    let formatted = '+375';
+                    if (value.length > 3) {
+                        formatted += ' (' + value.substring(3, 5);
+                    }
+                    if (value.length >= 5) {
+                        formatted += ') ' + value.substring(5, 8);
+                    }
+                    if (value.length >= 8) {
+                        formatted += '-' + value.substring(8, 10);
+                    }
+                    if (value.length >= 10) {
+                        formatted += '-' + value.substring(10, 12);
+                    }
+                    e.target.value = formatted;
+                }
+            });
+        });
+    }
+    
+    // Обновление информации о доступных столиках
+    function updateTableAvailability() {
+        fetch('/api/tables/availability')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('available-tables').textContent = data.available_tables;
+                document.getElementById('available-seats').textContent = data.available_seats;
+            })
+            .catch(error => console.error('Ошибка обновления информации о столиках:', error));
+    }
+    
+    // Запуск периодического обновления информации о столиках
+    function startTableAvailabilityUpdates() {
+        // Первое обновление
+        updateTableAvailability();
+        
+        // Обновление каждые 10 секунд
+        setInterval(updateTableAvailability, 10000);
     }
     
     // Функция оформления заказа
-    window.processOrder = async function() {
+    async function processOrder(orderType) {
         const cart = getCartData();
         if (cart.length === 0) {
             showNotification('Корзина пуста', 'error');
             return;
         }
         
-        const deliveryAddress = document.getElementById('delivery_address')?.value;
-        const phone = document.getElementById('phone')?.value;
-        const notes = document.getElementById('notes')?.value;
-        const guestsCount = document.getElementById('guests_count')?.value;
-        const reservationTime = document.getElementById('reservation_time')?.value;
+        let formData = {};
         
-        // Валидация
-        if (currentOrderType === 'delivery') {
+        // Получаем данные в зависимости от типа заказа
+        if (orderType === 'delivery') {
+            const deliveryAddress = document.getElementById('delivery_address')?.value;
+            const phone = document.getElementById('phone')?.value;
+            const notes = document.getElementById('notes')?.value;
+            
             if (!deliveryAddress || !phone) {
                 showNotification('Заполните обязательные поля', 'error');
                 return;
             }
-        } else {
-            if (!guestsCount || !phone || !reservationTime) {
+            
+            formData = {
+                order_type: 'delivery',
+                delivery_address: deliveryAddress,
+                phone: phone,
+                notes: notes
+            };
+            
+        } else if (orderType === 'dine_in') {
+            const reservationTime = document.getElementById('reservation_time')?.value;
+            const guestsCount = parseInt(document.getElementById('guests_count')?.value);
+            const phone = document.getElementById('dine_in_phone')?.value;
+            const notes = document.getElementById('dine_in_notes')?.value;
+            
+            if (!reservationTime || !guestsCount || !phone) {
                 showNotification('Заполните обязательные поля', 'error');
                 return;
             }
+            
+            if (guestsCount < 1 || guestsCount > 40) {
+                showNotification('Количество гостей должно быть от 1 до 40', 'error');
+                return;
+            }
+            
+            formData = {
+                order_type: 'dine_in',
+                reservation_time: reservationTime,
+                guests_count: guestsCount,
+                phone: phone,
+                notes: notes
+            };
+            
+        } else if (orderType === 'pickup') {
+            const pickupTime = document.getElementById('pickup_time')?.value;
+            const phone = document.getElementById('pickup_phone')?.value;
+            const notes = document.getElementById('pickup_notes')?.value;
+            
+            if (!pickupTime || !phone) {
+                showNotification('Заполните обязательные поля', 'error');
+                return;
+            }
+            
+            formData = {
+                order_type: 'pickup',
+                phone: phone,
+                notes: notes
+            };
         }
         
         // Проверка формата телефона
-        const phoneRegex = /^[\+]\d{1,3}\s?\(?\d{1,4}\)?[\s.-]?\d{1,4}[\s.-]?\d{1,4}[\s.-]?\d{1,9}$/;
-        if (!phoneRegex.test(phone)) {
-            showNotification('Введите корректный номер телефона', 'error');
+        const phoneRegex = /^\+375\s?\(?\d{2}\)?[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}$/;
+        if (!phoneRegex.test(formData.phone)) {
+            showNotification('Введите корректный номер телефона (+375)', 'error');
             return;
         }
         
         try {
-            const orderData = {
-                items: cart,
-                delivery_address: deliveryAddress,
-                phone: phone,
-                notes: notes,
-                order_type: currentOrderType
-            };
-            
-            if (currentOrderType === 'reservation') {
-                orderData.guests_count = parseInt(guestsCount);
-                orderData.reservation_time = reservationTime;
-            }
-            
             const response = await fetch('/order', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(orderData)
+                body: JSON.stringify({
+                    ...formData,
+                    items: cart
+                })
             });
             
             const data = await response.json();
