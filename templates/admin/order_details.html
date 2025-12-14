@@ -6,16 +6,22 @@
 <div class="container">
     <div class="order-details-header">
         <h1 class="section-title">Детали заказа #{{ order.id }}</h1>
-        <a href="{{ url_for('admin_orders') }}" class="btn btn-outline">
-            <i class="fas fa-arrow-left"></i> Назад к заказам
-        </a>
+        <div class="order-actions">
+            <a href="{{ url_for('admin_orders') }}" class="btn btn-outline">
+                <i class="fas fa-arrow-left"></i> Назад к заказам
+            </a>
+        </div>
     </div>
     
-    <div class="order-details-container">
-        <!-- Основная информация -->
+    <div class="order-details-grid">
+        <!-- Информация о заказе -->
         <div class="order-info-card">
             <h3>Информация о заказе</h3>
             <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Номер заказа:</span>
+                    <span class="info-value">#{{ order.id }}</span>
+                </div>
                 <div class="info-item">
                     <span class="info-label">Статус:</span>
                     <span class="info-value status status-{{ order.status }}">
@@ -26,9 +32,11 @@
                     <span class="info-label">Тип заказа:</span>
                     <span class="info-value">
                         {% if order.order_type == 'delivery' %}
-                        <i class="fas fa-truck"></i> Доставка
-                        {% else %}
-                        <i class="fas fa-utensils"></i> Бронирование
+                            Доставка
+                        {% elif order.order_type == 'pickup' %}
+                            Самовывоз
+                        {% elif order.order_type == 'dine_in' %}
+                            В ресторане
                         {% endif %}
                     </span>
                 </div>
@@ -37,24 +45,9 @@
                     <span class="info-value">{{ order.created_at.strftime('%d.%m.%Y %H:%M') }}</span>
                 </div>
                 <div class="info-item">
-                    <span class="info-label">Сумма заказа:</span>
-                    <span class="info-value">{{ order.total_amount }} BYN</span>
-                </div>
-                <div class="info-item">
                     <span class="info-label">Клиент:</span>
                     <span class="info-value">{{ order.user.username }}</span>
                 </div>
-                <div class="info-item">
-                    <span class="info-label">Email:</span>
-                    <span class="info-value">{{ order.user.email }}</span>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Контактная информация -->
-        <div class="order-info-card">
-            <h3>Контактная информация</h3>
-            <div class="info-grid">
                 <div class="info-item">
                     <span class="info-label">Телефон:</span>
                     <span class="info-value">{{ order.phone }}</span>
@@ -65,123 +58,77 @@
                     <span class="info-value">{{ order.delivery_address }}</span>
                 </div>
                 {% endif %}
-            </div>
-        </div>
-        
-        <!-- Информация о бронировании (если есть) -->
-        {% if order.reservation %}
-        <div class="order-info-card">
-            <h3>Информация о бронировании</h3>
-            <div class="info-grid">
+                {% if order.reservation %}
                 <div class="info-item">
-                    <span class="info-label">Дата и время:</span>
+                    <span class="info-label">Бронирование столика:</span>
+                    <span class="info-value">Столик #{{ order.reservation.table.table_number }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Время брони:</span>
                     <span class="info-value">{{ order.reservation.reservation_time.strftime('%d.%m.%Y %H:%M') }}</span>
                 </div>
                 <div class="info-item">
                     <span class="info-label">Количество гостей:</span>
                     <span class="info-value">{{ order.reservation.guests_count }}</span>
                 </div>
-                <div class="info-item">
-                    <span class="info-label">Статус брони:</span>
-                    <span class="info-value">{{ order.reservation.status }}</span>
-                </div>
-                {% if order.reservation.table %}
-                <div class="info-item">
-                    <span class="info-label">Столик:</span>
-                    <span class="info-value">№{{ order.reservation.table.table_number }} ({{ order.reservation.table.seats }} мест)</span>
-                </div>
-                {% else %}
-                <div class="info-item">
-                    <span class="info-label">Столик:</span>
-                    <span class="info-value status status-pending">Не назначен</span>
-                </div>
                 {% endif %}
+                <div class="info-item">
+                    <span class="info-label">Общая сумма:</span>
+                    <span class="info-value total-amount">{{ order.total_amount }} BYN</span>
+                </div>
             </div>
         </div>
-        {% endif %}
         
         <!-- Состав заказа -->
         <div class="order-items-card">
             <h3>Состав заказа</h3>
-            <table class="order-items-table">
-                <thead>
-                    <tr>
-                        <th>Блюдо</th>
-                        <th>Количество</th>
-                        <th>Цена за единицу</th>
-                        <th>Сумма</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in order.items %}
-                    <tr>
-                        <td>
-                            <div class="menu-item-info">
-                                <div class="menu-item-name">{{ item.menu_item.name }}</div>
-                                <div class="menu-item-description">{{ item.menu_item.description }}</div>
-                            </div>
-                        </td>
-                        <td>{{ item.quantity }}</td>
-                        <td>{{ item.price_at_time }} BYN</td>
-                        <td>{{ item.price_at_time * item.quantity }} BYN</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td colspan="3" class="total-label">Итого:</td>
-                        <td class="total-amount">{{ order.total_amount }} BYN</td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-        
-        <!-- Комментарий -->
-        {% if order.notes %}
-        <div class="order-info-card">
-            <h3>Комментарий клиента</h3>
-            <p class="order-notes">{{ order.notes }}</p>
-        </div>
-        {% endif %}
-        
-        <!-- Управление заказом -->
-        <div class="order-actions-card">
-            <h3>Управление заказом</h3>
-            <div class="action-buttons">
-                <div class="status-control">
-                    <label for="status-select">Изменить статус:</label>
-                    <select id="status-select" class="form-control" onchange="updateOrderStatus({{ order.id }}, this.value)">
-                        <option value="pending" {% if order.status == 'pending' %}selected{% endif %}>Ожидает обработки</option>
-                        <option value="preparing" {% if order.status == 'preparing' %}selected{% endif %}>Готовится</option>
-                        <option value="ready" {% if order.status == 'ready' %}selected{% endif %}>Готов к выдаче</option>
-                        <option value="delivered" {% if order.status == 'delivered' %}selected{% endif %}>Доставлен</option>
-                        <option value="cancelled" {% if order.status == 'cancelled' %}selected{% endif %}>Отменить</option>
-                    </select>
-                </div>
-                
-                {% if order.reservation and not order.reservation.table %}
-                <div class="table-assignment">
-                    <label for="table-select">Назначить столик:</label>
-                    <div class="table-assignment-controls">
-                        <select id="table-select" class="form-control">
-                            <option value="">Выберите столик</option>
-                            {% for i in range(1, 11) %}
-                            <option value="{{ i }}">Столик №{{ i }} (4 места)</option>
-                            {% endfor %}
-                        </select>
-                        <button class="btn btn-primary" onclick="assignTable({{ order.reservation.id }})">
-                            Назначить
-                        </button>
+            <div class="order-items-list">
+                {% for item in order.items %}
+                <div class="order-item-detail">
+                    <div class="item-info">
+                        <h4>{{ item.menu_item.name }}</h4>
+                        <p class="item-description">{{ item.menu_item.description }}</p>
+                    </div>
+                    <div class="item-quantity">
+                        <span>{{ item.quantity }} × {{ item.price_at_time }} BYN</span>
+                    </div>
+                    <div class="item-total">
+                        <span>{{ item.quantity * item.price_at_time }} BYN</span>
                     </div>
                 </div>
-                {% elif order.reservation and order.reservation.table %}
-                <div class="table-info">
-                    <p>Назначенный столик: №{{ order.reservation.table.table_number }}</p>
-                    <button class="btn btn-outline" onclick="freeTable({{ order.reservation.table.id }})">
-                        Освободить столик
-                    </button>
+                {% endfor %}
+            </div>
+            <div class="order-summary">
+                <div class="summary-row">
+                    <span>Итого:</span>
+                    <span class="summary-amount">{{ order.total_amount }} BYN</span>
                 </div>
-                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Дополнительная информация -->
+        <div class="order-notes-card">
+            <h3>Дополнительная информация</h3>
+            {% if order.notes %}
+            <div class="notes-content">
+                <p>{{ order.notes }}</p>
+            </div>
+            {% else %}
+            <p class="no-notes">Нет дополнительных комментариев</p>
+            {% endif %}
+            
+            <div class="status-control">
+                <h4>Изменить статус заказа</h4>
+                <select id="status-select" class="form-control" data-order-id="{{ order.id }}">
+                    <option value="pending" {% if order.status == 'pending' %}selected{% endif %}>Ожидает обработки</option>
+                    <option value="preparing" {% if order.status == 'preparing' %}selected{% endif %}>Готовится</option>
+                    <option value="ready" {% if order.status == 'ready' %}selected{% endif %}>Готов к выдаче</option>
+                    <option value="delivered" {% if order.status == 'delivered' %}selected{% endif %}>Доставлен</option>
+                    <option value="cancelled" {% if order.status == 'cancelled' %}selected{% endif %}>Отменить</option>
+                </select>
+                <button class="btn btn-primary btn-block" onclick="updateOrderStatus({{ order.id }})">
+                    Обновить статус
+                </button>
             </div>
         </div>
     </div>
@@ -195,91 +142,51 @@
         margin-bottom: 30px;
     }
     
-    .order-details-container {
+    .order-details-grid {
         display: grid;
-        gap: 20px;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
     }
     
-    .order-info-card, .order-items-card, .order-actions-card {
+    .order-info-card, .order-items-card, .order-notes-card {
         background-color: white;
         padding: 25px;
         border-radius: 10px;
-        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
     }
     
-    .order-info-card h3, .order-items-card h3, .order-actions-card h3 {
+    .order-items-card {
+        grid-column: 1 / -1;
+    }
+    
+    .order-info-card h3, .order-items-card h3, .order-notes-card h3 {
         margin-bottom: 20px;
         color: var(--primary-color);
-        border-bottom: 2px solid var(--secondary-color);
+        border-bottom: 2px solid var(--gray-light);
         padding-bottom: 10px;
     }
     
     .info-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        grid-template-columns: 1fr 1fr;
         gap: 15px;
     }
     
     .info-item {
         display: flex;
         flex-direction: column;
+        gap: 5px;
     }
     
     .info-label {
         font-weight: 500;
         color: var(--gray-dark);
         font-size: 0.9rem;
-        margin-bottom: 5px;
     }
     
     .info-value {
         font-size: 1rem;
         color: var(--text-color);
-    }
-    
-    .order-items-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-    
-    .order-items-table th {
-        background-color: var(--background-color);
-        padding: 12px 15px;
-        text-align: left;
-        font-weight: 600;
-        color: var(--heading-color);
-        border-bottom: 2px solid var(--gray-light);
-    }
-    
-    .order-items-table td {
-        padding: 15px;
-        border-bottom: 1px solid var(--gray-light);
-    }
-    
-    .order-items-table tfoot td {
-        border-top: 2px solid var(--gray-light);
-        border-bottom: none;
-    }
-    
-    .menu-item-info {
-        max-width: 300px;
-    }
-    
-    .menu-item-name {
-        font-weight: 500;
-        margin-bottom: 5px;
-    }
-    
-    .menu-item-description {
-        font-size: 0.9rem;
-        color: var(--gray);
-        line-height: 1.4;
-    }
-    
-    .total-label {
-        font-weight: 700;
-        text-align: right;
-        font-size: 1.1rem;
     }
     
     .total-amount {
@@ -288,77 +195,116 @@
         font-size: 1.2rem;
     }
     
-    .order-notes {
-        padding: 15px;
-        background-color: var(--background-color);
-        border-radius: 5px;
-        border-left: 3px solid var(--primary-color);
-        font-style: italic;
-        line-height: 1.6;
+    .order-items-list {
+        margin-bottom: 20px;
     }
     
-    .action-buttons {
+    .order-item-detail {
         display: grid;
+        grid-template-columns: 2fr 1fr 1fr;
         gap: 20px;
+        padding: 15px 0;
+        border-bottom: 1px solid var(--gray-light);
     }
     
-    .status-control, .table-assignment {
+    .order-item-detail:last-child {
+        border-bottom: none;
+    }
+    
+    .item-info h4 {
+        margin-bottom: 5px;
+        color: var(--heading-color);
+    }
+    
+    .item-description {
+        color: var(--gray);
+        font-size: 0.9rem;
+        line-height: 1.4;
+    }
+    
+    .item-quantity, .item-total {
         display: flex;
-        flex-direction: column;
-        gap: 10px;
+        align-items: center;
+        justify-content: flex-end;
     }
     
-    .table-assignment-controls {
-        display: flex;
-        gap: 10px;
-        align-items: flex-end;
+    .item-total {
+        font-weight: 700;
+        color: var(--primary-color);
     }
     
-    .table-assignment-controls .form-control {
-        flex: 1;
+    .order-summary {
+        border-top: 2px solid var(--gray-light);
+        padding-top: 20px;
+        margin-top: 20px;
     }
     
-    .table-info {
-        padding: 15px;
-        background-color: var(--background-color);
-        border-radius: 5px;
-        border-left: 3px solid var(--success);
+    .summary-row {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        font-size: 1.2rem;
     }
     
-    .table-info p {
-        margin: 0;
-        font-weight: 500;
+    .summary-amount {
+        font-weight: 700;
+        color: var(--primary-color);
+    }
+    
+    .notes-content {
+        background-color: var(--background-color);
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 25px;
+    }
+    
+    .no-notes {
+        color: var(--gray);
+        font-style: italic;
+        margin-bottom: 25px;
+    }
+    
+    .status-control {
+        margin-top: 20px;
+    }
+    
+    .status-control h4 {
+        margin-bottom: 10px;
+        color: var(--heading-color);
     }
     
     @media (max-width: 768px) {
         .order-details-header {
             flex-direction: column;
-            align-items: flex-start;
             gap: 15px;
+            text-align: center;
+        }
+        
+        .order-details-grid {
+            grid-template-columns: 1fr;
         }
         
         .info-grid {
             grid-template-columns: 1fr;
         }
         
-        .table-assignment-controls {
-            flex-direction: column;
+        .order-item-detail {
+            grid-template-columns: 1fr;
+            gap: 10px;
         }
         
-        .table-info {
-            flex-direction: column;
-            gap: 10px;
-            align-items: flex-start;
+        .item-quantity, .item-total {
+            justify-content: flex-start;
         }
     }
 </style>
 
 <script>
     // Обновление статуса заказа
-    async function updateOrderStatus(orderId, newStatus) {
+    async function updateOrderStatus(orderId) {
+        const select = document.getElementById('status-select');
+        const newStatus = select.value;
+        
         try {
             const response = await fetch(`/admin/order/${orderId}/status`, {
                 method: 'POST',
@@ -371,17 +317,18 @@
             const data = await response.json();
             
             if (response.ok) {
-                showNotification('Статус заказа обновлен', 'success');
+                showNotification('Статус заказа успешно обновлен', 'success');
+                
                 // Обновляем отображаемый статус
                 const statusElement = document.querySelector('.status');
-                statusElement.className = `status status-${newStatus}`;
                 statusElement.textContent = getStatusText(newStatus);
+                statusElement.className = `status status-${newStatus}`;
                 
-                // Если статус изменен на "отменен", обновляем страницу
+                // Если заказ отменен, перезагружаем страницу через 2 секунды
                 if (newStatus === 'cancelled') {
                     setTimeout(() => {
-                        location.reload();
-                    }, 1500);
+                        window.location.reload();
+                    }, 2000);
                 }
             } else {
                 showNotification(data.error || 'Ошибка обновления статуса', 'error');
@@ -391,71 +338,7 @@
         }
     }
     
-    // Назначение столика для бронирования
-    async function assignTable(reservationId) {
-        const tableSelect = document.getElementById('table-select');
-        const tableId = tableSelect.value;
-        
-        if (!tableId) {
-            showNotification('Выберите столик', 'error');
-            return;
-        }
-        
-        try {
-            const response = await fetch(`/admin/reservation/${reservationId}/assign_table`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ table_id: tableId })
-            });
-            
-            const data = await response.json();
-            
-            if (response.ok) {
-                showNotification('Столик успешно назначен', 'success');
-                setTimeout(() => {
-                    location.reload();
-                }, 1500);
-            } else {
-                showNotification(data.error || 'Ошибка назначения столика', 'error');
-            }
-        } catch (error) {
-            showNotification('Ошибка сети', 'error');
-        }
-    }
-    
-    // Освобождение столика
-    async function freeTable(tableId) {
-        if (!confirm('Вы уверены, что хотите освободить этот столик?')) {
-            return;
-        }
-        
-        try {
-            const response = await fetch(`/admin/table/${tableId}/free`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({})
-            });
-            
-            const data = await response.json();
-            
-            if (response.ok) {
-                showNotification('Столик успешно освобожден', 'success');
-                setTimeout(() => {
-                    location.reload();
-                }, 1500);
-            } else {
-                showNotification(data.error || 'Ошибка освобождения столика', 'error');
-            }
-        } catch (error) {
-            showNotification('Ошибка сети', 'error');
-        }
-    }
-    
-    // Вспомогательная функция для перевода статусов
+    // Функция для перевода статусов на русский
     function getStatusText(status) {
         const statusMap = {
             'pending': 'Ожидает обработки',
