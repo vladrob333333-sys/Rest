@@ -364,7 +364,22 @@ def admin_orders():
         abort(403)
     
     orders = Order.query.order_by(desc(Order.created_at)).all()
-    return render_template('admin/orders.html', orders=orders)
+    
+    # Рассчитываем статистику сразу для отображения на странице
+    total_revenue = db.session.query(func.sum(Order.total_amount))\
+                              .filter(Order.status != 'cancelled')\
+                              .scalar() or 0
+    
+    active_orders_count = Order.query.filter(Order.status != 'cancelled').count()
+    cancelled_revenue = db.session.query(func.sum(Order.total_amount))\
+                                 .filter(Order.status == 'cancelled')\
+                                 .scalar() or 0
+    
+    return render_template('admin/orders.html', 
+                         orders=orders, 
+                         total_revenue=total_revenue,
+                         active_orders_count=active_orders_count,
+                         cancelled_revenue=cancelled_revenue)
 
 # Админ панель - управление меню
 @app.route('/admin/menu')
