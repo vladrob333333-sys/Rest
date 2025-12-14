@@ -429,6 +429,187 @@ def api_admin_stats():
         'total_revenue': float(total_revenue)
     })
 
+# Добавьте эти функции после существующих маршрутов:
+
+# Страница управления меню для администратора
+@app.route('/admin/menu', methods=['GET', 'POST'])
+@login_required
+def admin_menu():
+    if current_user.role != 'admin':
+        abort(403)
+    
+    if request.method == 'POST':
+        try:
+            name = request.form.get('name')
+            description = request.form.get('description')
+            price = float(request.form.get('price'))
+            category_id = int(request.form.get('category_id'))
+            image = request.form.get('image', '')
+            is_available = request.form.get('is_available') == 'on'
+            
+            # Валидация
+            if not name or price <= 0:
+                flash('Пожалуйста, заполните все обязательные поля корректно', 'danger')
+                return redirect(url_for('admin_menu'))
+            
+            # Создаем новый пункт меню
+            menu_item = MenuItem(
+                name=name,
+                description=description,
+                price=price,
+                category_id=category_id,
+                image=image,
+                is_available=is_available
+            )
+            
+            db.session.add(menu_item)
+            db.session.commit()
+            
+            flash('Пункт меню успешно добавлен!', 'success')
+            return redirect(url_for('admin_menu'))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Ошибка при добавлении пункта меню: {str(e)}', 'danger')
+            return redirect(url_for('admin_menu'))
+    
+    # GET запрос - показать страницу управления меню
+    categories = Category.query.all()
+    menu_items = MenuItem.query.order_by(MenuItem.category_id, MenuItem.name).all()
+    return render_template('admin/menu.html', categories=categories, menu_items=menu_items)
+
+# Редактирование пункта меню
+@app.route('/admin/menu/<int:item_id>/edit', methods=['POST'])
+@login_required
+def edit_menu_item(item_id):
+    if current_user.role != 'admin':
+        abort(403)
+    
+    try:
+        menu_item = MenuItem.query.get_or_404(item_id)
+        
+        menu_item.name = request.form.get('name')
+        menu_item.description = request.form.get('description')
+        menu_item.price = float(request.form.get('price'))
+        menu_item.category_id = int(request.form.get('category_id'))
+        menu_item.image = request.form.get('image', '')
+        menu_item.is_available = request.form.get('is_available') == 'on'
+        
+        db.session.commit()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# Удаление пункта меню
+@app.route('/admin/menu/<int:item_id>/delete', methods=['POST'])
+@login_required
+def delete_menu_item(item_id):
+    if current_user.role != 'admin':
+        abort(403)
+    
+    try:
+        menu_item = MenuItem.query.get_or_404(item_id)
+        
+        # Проверяем, нет ли заказов с этим блюдом
+        order_items = OrderItem.query.filter_by(menu_item_id=item_id).first()
+        if order_items:
+            return jsonify({'error': 'Невозможно удалить блюдо, так как оно есть в заказах'}), 400
+        
+        db.session.delete(menu_item)
+        db.session.commit()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# Добавление новой категории
+@app.route('/admin/categories/add', methods=['POST'])
+@login_required
+def add_category():
+    if current_user.role != 'admin':
+        abort(403)
+    
+    try:
+        name = request.form.get('name')
+        description = request.form.get('description', '')
+        
+        if not name:
+            return jsonify({'error': 'Название категории обязательно'}), 400
+        
+        # Проверяем, нет ли уже категории с таким названием
+        existing_category = Category.query.filter_by(name=name).first()
+        if existing_category:
+            return jsonify({'error': 'Категория с таким названием уже существует'}), 400
+        
+        category = Category(name=name, description=description)
+        db.session.add(category)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'category_id': category.id})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# Обновим функцию get_admin_stats для правильного учета отмененных заказов
+def get_admin_stats():
+    from datetime import date
+    
+    total_orders = Order.query.filter(Order.status != 'cancelled').count()
+    pending_orders = Order.query.filter_by(status='pending').count()
+    
+    # Заказы за сегодня, исключая отмененные
+    today_orders = Order.query.filter(
+        db.func.date(Order.created_at) == date.today(),
+        Order.status != 'cancelled'
+    ).count()
+    
+    # Общая выручка, исключая отмененные заказы
+    total_revenue = db.session.query(db.func.sum(Order.total_amount))\
+        .filter(Order.status != 'cancelled')\
+        .scalar() or 0
+    
+    # Статистика по статусам
+    status_stats = {}
+    for status in ['pending', 'preparing', 'ready', 'delivered', 'cancelled']:
+        count = Order.query.filter_by(status=status).count()
+        status_stats[status] = count
+    
+    return {
+        'total_orders': total_orders,
+        'pending_orders': pending_orders,
+        'today_orders': today_orders,
+        'total_revenue': float(total_revenue),
+        'status_stats': status_stats
+    }
+
+# Обновим функцию api_admin_stats
+@app.route('/api/admin/stats')
+@login_required
+def api_admin_stats():
+    if current_user.role != 'admin':
+        abort(403)
+    
+    stats = get_admin_stats()
+    return jsonify(stats)
+
+# Обновим функцию admin_orders для передачи статистики
+@app.route('/admin/orders')
+@login_required
+def admin_orders():
+    if current_user.role != 'admin':
+        abort(403)
+    
+    orders = Order.query.order_by(Order.created_at.desc()).all()
+    stats = get_admin_stats()
+    return render_template('admin/orders.html', orders=orders, stats=stats)
+
+
 # Обновление статуса заказа
 @app.route('/admin/order/<int:order_id>/status', methods=['POST'])
 @login_required
