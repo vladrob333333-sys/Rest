@@ -2,14 +2,16 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.exceptions import HTTPException
-from datetime import datetime
+from datetime import datetime, date
+import json
 import os
+from sqlalchemy import desc, func
 from models import *
 from database import db
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'restaurant-management-secret-key-2024'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///restaurant.db'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'restaurant-management-secret-key-2024')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///restaurant.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Инициализация базы данных
@@ -76,7 +78,7 @@ def index():
     # Пример данных для слайдера
     slider_items = [
         {'image': 'slide1.jpg', 'title': 'Добро пожаловать', 'description': 'Лучшие блюда от шеф-повара'},
-        {'image': 'slide2.jpg', 'title': 'Специальное предложение', 'description': 'Скидка 20% на все заказы от 2000₽'},
+        {'image': 'slide2.jpg', 'title': 'Специальное предложение', 'description': 'Скидка 20% на все заказы от 50 BYN'},
         {'image': 'slide3.jpg', 'title': 'Новое меню', 'description': 'Попробуйте наши сезонные блюда'}
     ]
     
@@ -143,7 +145,7 @@ def order():
                 phone=phone,
                 notes=notes,
                 status='pending',
-                total_amount=total_amount  # Устанавливаем сумму здесь
+                total_amount=total_amount
             )
             
             db.session.add(order)
@@ -291,6 +293,69 @@ def api_menu():
     
     return jsonify(result)
 
+# API для получения обновленных данных меню
+@app.route('/api/menu/update')
+def api_menu_update():
+    categories = Category.query.all()
+    menu_items = MenuItem.query.filter_by(is_available=True).all()
+    
+    result = []
+    for category in categories:
+        category_data = {
+            'id': category.id,
+            'name': category.name,
+            'items': []
+        }
+        
+        for item in menu_items:
+            if item.category_id == category.id:
+                category_data['items'].append({
+                    'id': item.id,
+                    'name': item.name,
+                    'description': item.description,
+                    'price': item.price,
+                    'image': item.image,
+                    'is_available': item.is_available
+                })
+        
+        if category_data['items']:
+            result.append(category_data)
+    
+    return jsonify(result)
+
+# API для получения обновленных заказов пользователя
+@app.route('/api/user/orders/update')
+@login_required
+def api_user_orders_update():
+    orders = Order.query.filter_by(user_id=current_user.id)\
+                       .order_by(desc(Order.created_at))\
+                       .limit(20)\
+                       .all()
+    
+    result = []
+    for order in orders:
+        order_data = {
+            'id': order.id,
+            'total_amount': order.total_amount,
+            'status': order.status,
+            'created_at': order.created_at.strftime('%d.%m.%Y %H:%M'),
+            'delivery_address': order.delivery_address,
+            'phone': order.phone,
+            'items_count': len(order.items),
+            'items': []
+        }
+        
+        for item in order.items[:5]:  # Берем только первые 5 позиций
+            order_data['items'].append({
+                'name': item.menu_item.name,
+                'quantity': item.quantity,
+                'price': item.price_at_time
+            })
+        
+        result.append(order_data)
+    
+    return jsonify(result)
+
 # Панель администратора (просмотр заказов)
 @app.route('/admin/orders')
 @login_required
@@ -298,8 +363,71 @@ def admin_orders():
     if current_user.role != 'admin':
         abort(403)
     
-    orders = Order.query.order_by(Order.created_at.desc()).all()
+    orders = Order.query.order_by(desc(Order.created_at)).all()
     return render_template('admin/orders.html', orders=orders)
+
+# API для администратора - получение обновленных заказов
+@app.route('/api/admin/orders/update')
+@login_required
+def api_admin_orders_update():
+    if current_user.role != 'admin':
+        abort(403)
+    
+    # Получение параметров фильтрации
+    status_filter = request.args.get('status', 'all')
+    date_filter = request.args.get('date', None)
+    
+    query = Order.query
+    
+    if status_filter != 'all':
+        query = query.filter_by(status=status_filter)
+    
+    if date_filter:
+        try:
+            filter_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
+            query = query.filter(func.date(Order.created_at) == filter_date)
+        except ValueError:
+            pass
+    
+    orders = query.order_by(desc(Order.created_at)).limit(50).all()
+    
+    result = []
+    for order in orders:
+        # Обрезаем длинный адрес
+        address = order.delivery_address
+        if address and len(address) > 50:
+            address = address[:50] + '...'
+            
+        result.append({
+            'id': order.id,
+            'username': order.user.username,
+            'total_amount': order.total_amount,
+            'status': order.status,
+            'created_at': order.created_at.strftime('%d.%m.%Y %H:%M'),
+            'delivery_address': address,
+            'phone': order.phone
+        })
+    
+    return jsonify(result)
+
+# API для получения статистики (для администратора)
+@app.route('/api/admin/stats')
+@login_required
+def api_admin_stats():
+    if current_user.role != 'admin':
+        abort(403)
+    
+    total_orders = Order.query.count()
+    pending_orders = Order.query.filter_by(status='pending').count()
+    today_orders = Order.query.filter(func.date(Order.created_at) == date.today()).count()
+    total_revenue = db.session.query(func.sum(Order.total_amount)).scalar() or 0
+    
+    return jsonify({
+        'total_orders': total_orders,
+        'pending_orders': pending_orders,
+        'today_orders': today_orders,
+        'total_revenue': float(total_revenue)
+    })
 
 # Обновление статуса заказа
 @app.route('/admin/order/<int:order_id>/status', methods=['POST'])
@@ -338,36 +466,36 @@ def init_db():
             
             db.session.flush()  # Получаем ID категорий
             
-            # Пример блюд
+            # Пример блюд с ценами в BYN
             menu_items = [
-                MenuItem(name='Брускетта', description='С помидорами и базиликом', price=350, category_id=1, image='bruschetta.jpg'),
-                MenuItem(name='Стейк', description='Говяжий стейк с овощами', price=1200, category_id=2, image='steak.jpg'),
-                MenuItem(name='Салат Цезарь', description='С курицей и соусом', price=450, category_id=1, image='caesar.jpg'),
-                MenuItem(name='Кофе', description='Арабика 200мл', price=200, category_id=3, image='coffee.jpg'),
-                MenuItem(name='Тирамису', description='Итальянский десерт', price=400, category_id=4, image='tiramisu.jpg'),
-                MenuItem(name='Суп Том Ям', description='Тайский острый суп с креветками', price=550, category_id=2, image='tomyam.jpg'),
-                MenuItem(name='Паста Карбонара', description='С беконом и сливочным соусом', price=480, category_id=2, image='carbonara.jpg'),
-                MenuItem(name='Чизкейк', description='Классический чизкейк', price=350, category_id=4, image='cheesecake.jpg')
+                MenuItem(name='Брускетта', description='С помидорами и базиликом', price=12.5, category_id=1, image='bruschetta.jpg'),
+                MenuItem(name='Стейк', description='Говяжий стейк с овощами', price=42.5, category_id=2, image='steak.jpg'),
+                MenuItem(name='Салат Цезарь', description='С курицей и соусом', price=16.0, category_id=1, image='caesar.jpg'),
+                MenuItem(name='Кофе', description='Арабика 200мл', price=7.0, category_id=3, image='coffee.jpg'),
+                MenuItem(name='Тирамису', description='Итальянский десерт', price=14.0, category_id=4, image='tiramisu.jpg'),
+                MenuItem(name='Суп Том Ям', description='Тайский острый суп с креветками', price=19.5, category_id=2, image='tomyam.jpg'),
+                MenuItem(name='Паста Карбонара', description='С беконом и сливочным соусом', price=17.0, category_id=2, image='carbonara.jpg'),
+                MenuItem(name='Чизкейк', description='Классический чизкейк', price=12.5, category_id=4, image='cheesecake.jpg')
             ]
             
             for item in menu_items:
                 db.session.add(item)
             
-            # Создаем тестового администратора
+            # Создаем тестового администратора с белорусским email
             if not User.query.filter_by(username='admin').first():
                 admin = User(
                     username='admin',
-                    email='admin@restaurant.com',
+                    email='admin@gurman.by',
                     password=generate_password_hash('admin123'),
                     role='admin'
                 )
                 db.session.add(admin)
             
-            # Создаем тестового пользователя
+            # Создаем тестового пользователя с белорусским email
             if not User.query.filter_by(username='user').first():
                 user = User(
                     username='user',
-                    email='user@restaurant.com',
+                    email='user@gurman.by',
                     password=generate_password_hash('user123'),
                     role='customer'
                 )
@@ -376,6 +504,8 @@ def init_db():
             db.session.commit()
         print("База данных инициализирована!")
 
+# Для запуска на Render
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
