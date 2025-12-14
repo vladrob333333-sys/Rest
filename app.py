@@ -5,14 +5,27 @@ from werkzeug.exceptions import HTTPException
 from datetime import datetime, date
 import json
 import os
+import re
 from sqlalchemy import desc, func
-from models import * 
+from models import *
 from database import db
 
 app = Flask(__name__)
+
+# Получаем строку подключения из переменной окружения
+database_url = os.environ.get('DATABASE_URL', 'sqlite:///restaurant.db')
+
+# Исправляем строку подключения для SQLAlchemy (PostgreSQL на Render)
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'restaurant-management-secret-key-2024')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///restaurant.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_recycle': 300,
+    'pool_pre_ping': True,
+}
 
 # Инициализация базы данных
 db.init_app(app)
@@ -37,8 +50,9 @@ def track_page_view():
             )
             db.session.add(view)
             db.session.commit()
-        except:
+        except Exception as e:
             db.session.rollback()
+            print(f"Ошибка при сохранении просмотра: {e}")
 
 # Вспомогательная функция для перевода статусов
 @app.context_processor
@@ -97,9 +111,14 @@ def index():
 # Страница меню
 @app.route('/menu')
 def menu():
-    categories = Category.query.all()
-    menu_items = MenuItem.query.filter_by(is_available=True).all()
-    return render_template('menu.html', categories=categories, menu_items=menu_items)
+    try:
+        categories = Category.query.all()
+        menu_items = MenuItem.query.filter_by(is_available=True).all()
+        return render_template('menu.html', categories=categories, menu_items=menu_items)
+    except Exception as e:
+        print(f"Ошибка при загрузке меню: {e}")
+        flash('Ошибка при загрузке меню', 'danger')
+        return render_template('menu.html', categories=[], menu_items=[])
 
 # Страница заказа
 @app.route('/order', methods=['GET', 'POST'])
@@ -175,15 +194,25 @@ def order():
             return jsonify({'error': f'Ошибка сервера: {str(e)}'}), 500
     
     # GET запрос - отображаем форму заказа
-    menu_items = MenuItem.query.filter_by(is_available=True).all()
-    return render_template('order.html', menu_items=menu_items)
+    try:
+        menu_items = MenuItem.query.filter_by(is_available=True).all()
+        return render_template('order.html', menu_items=menu_items)
+    except Exception as e:
+        print(f"Ошибка при загрузке меню для заказа: {e}")
+        flash('Ошибка при загрузке меню', 'danger')
+        return render_template('order.html', menu_items=[])
 
 # История заказов
 @app.route('/profile/orders')
 @login_required
 def user_orders():
-    orders = Order.query.filter_by(user_id=current_user.id).order_by(Order.created_at.desc()).all()
-    return render_template('profile.html', orders=orders)
+    try:
+        orders = Order.query.filter_by(user_id=current_user.id).order_by(Order.created_at.desc()).all()
+        return render_template('profile.html', orders=orders)
+    except Exception as e:
+        print(f"Ошибка при загрузке заказов: {e}")
+        flash('Ошибка при загрузке истории заказов', 'danger')
+        return render_template('profile.html', orders=[])
 
 # Регистрация
 @app.route('/register', methods=['GET', 'POST'])
@@ -192,44 +221,50 @@ def register():
         return redirect(url_for('index'))
     
     if request.method == 'POST':
-        username = request.form.get('username')
-        email = request.form.get('email')
-        password = request.form.get('password')
-        confirm_password = request.form.get('confirm_password')
-        
-        # Валидация
-        errors = []
-        if not username or len(username) < 3:
-            errors.append('Имя пользователя должно содержать минимум 3 символа')
-        if not email or '@' not in email:
-            errors.append('Введите корректный email')
-        if not password or len(password) < 6:
-            errors.append('Пароль должен содержать минимум 6 символов')
-        if password != confirm_password:
-            errors.append('Пароли не совпадают')
-        
-        # Проверка уникальности
-        if User.query.filter_by(username=username).first():
-            errors.append('Пользователь с таким именем уже существует')
-        if User.query.filter_by(email=email).first():
-            errors.append('Пользователь с таким email уже существует')
-        
-        if errors:
-            for error in errors:
-                flash(error, 'danger')
-        else:
-            # Создание пользователя
-            user = User(
-                username=username,
-                email=email,
-                password=generate_password_hash(password),
-                role='customer'
-            )
-            db.session.add(user)
-            db.session.commit()
+        try:
+            username = request.form.get('username')
+            email = request.form.get('email')
+            password = request.form.get('password')
+            confirm_password = request.form.get('confirm_password')
             
-            flash('Регистрация прошла успешно! Теперь вы можете войти.', 'success')
-            return redirect(url_for('login'))
+            # Валидация
+            errors = []
+            if not username or len(username) < 3:
+                errors.append('Имя пользователя должно содержать минимум 3 символа')
+            if not email or '@' not in email:
+                errors.append('Введите корректный email')
+            if not password or len(password) < 6:
+                errors.append('Пароль должен содержать минимум 6 символов')
+            if password != confirm_password:
+                errors.append('Пароли не совпадают')
+            
+            # Проверка уникальности
+            if User.query.filter_by(username=username).first():
+                errors.append('Пользователь с таким именем уже существует')
+            if User.query.filter_by(email=email).first():
+                errors.append('Пользователь с таким email уже существует')
+            
+            if errors:
+                for error in errors:
+                    flash(error, 'danger')
+            else:
+                # Создание пользователя
+                user = User(
+                    username=username,
+                    email=email,
+                    password=generate_password_hash(password),
+                    role='customer'
+                )
+                db.session.add(user)
+                db.session.commit()
+                
+                flash('Регистрация прошла успешно! Теперь вы можете войти.', 'success')
+                return redirect(url_for('login'))
+                
+        except Exception as e:
+            db.session.rollback()
+            print(f"Ошибка при регистрации: {e}")
+            flash('Ошибка при регистрации. Попробуйте позже.', 'danger')
     
     return render_template('register.html')
 
@@ -240,18 +275,22 @@ def login():
         return redirect(url_for('index'))
     
     if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        remember = request.form.get('remember')
-        
-        user = User.query.filter_by(username=username).first()
-        
-        if user and check_password_hash(user.password, password):
-            login_user(user, remember=bool(remember))
-            flash('Вход выполнен успешно!', 'success')
-            return redirect(url_for('index'))
-        else:
-            flash('Неверное имя пользователя или пароль', 'danger')
+        try:
+            username = request.form.get('username')
+            password = request.form.get('password')
+            remember = request.form.get('remember')
+            
+            user = User.query.filter_by(username=username).first()
+            
+            if user and check_password_hash(user.password, password):
+                login_user(user, remember=bool(remember))
+                flash('Вход выполнен успешно!', 'success')
+                return redirect(url_for('index'))
+            else:
+                flash('Неверное имя пользователя или пароль', 'danger')
+        except Exception as e:
+            print(f"Ошибка при входе: {e}")
+            flash('Ошибка при входе. Попробуйте позже.', 'danger')
     
     return render_template('login.html')
 
@@ -266,95 +305,73 @@ def logout():
 # API для получения меню
 @app.route('/api/menu')
 def api_menu():
-    categories = Category.query.all()
-    menu_items = MenuItem.query.filter_by(is_available=True).all()
-    
-    result = []
-    for category in categories:
-        category_data = {
-            'id': category.id,
-            'name': category.name,
-            'description': category.description,
-            'items': []
-        }
+    try:
+        categories = Category.query.all()
+        menu_items = MenuItem.query.filter_by(is_available=True).all()
         
-        for item in menu_items:
-            if item.category_id == category.id:
-                category_data['items'].append({
-                    'id': item.id,
-                    'name': item.name,
-                    'description': item.description,
-                    'price': item.price,
-                    'image': item.image
-                })
+        result = []
+        for category in categories:
+            category_data = {
+                'id': category.id,
+                'name': category.name,
+                'description': category.description,
+                'items': []
+            }
+            
+            for item in menu_items:
+                if item.category_id == category.id:
+                    category_data['items'].append({
+                        'id': item.id,
+                        'name': item.name,
+                        'description': item.description,
+                        'price': item.price,
+                        'image': item.image
+                    })
+            
+            if category_data['items']:
+                result.append(category_data)
         
-        if category_data['items']:
-            result.append(category_data)
-    
-    return jsonify(result)
-
-# API для получения обновленных данных меню
-@app.route('/api/menu/update')
-def api_menu_update():
-    categories = Category.query.all()
-    menu_items = MenuItem.query.filter_by(is_available=True).all()
-    
-    result = []
-    for category in categories:
-        category_data = {
-            'id': category.id,
-            'name': category.name,
-            'items': []
-        }
-        
-        for item in menu_items:
-            if item.category_id == category.id:
-                category_data['items'].append({
-                    'id': item.id,
-                    'name': item.name,
-                    'description': item.description,
-                    'price': item.price,
-                    'image': item.image,
-                    'is_available': item.is_available
-                })
-        
-        if category_data['items']:
-            result.append(category_data)
-    
-    return jsonify(result)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Ошибка API меню: {e}")
+        return jsonify([])
 
 # API для получения обновленных заказов пользователя
 @app.route('/api/user/orders/update')
 @login_required
 def api_user_orders_update():
-    orders = Order.query.filter_by(user_id=current_user.id)\
-                       .order_by(desc(Order.created_at))\
-                       .limit(20)\
-                       .all()
-    
-    result = []
-    for order in orders:
-        order_data = {
-            'id': order.id,
-            'total_amount': order.total_amount,
-            'status': order.status,
-            'created_at': order.created_at.strftime('%d.%m.%Y %H:%M'),
-            'delivery_address': order.delivery_address,
-            'phone': order.phone,
-            'items_count': len(order.items),
-            'items': []
-        }
+    try:
+        orders = Order.query.filter_by(user_id=current_user.id)\
+                           .order_by(desc(Order.created_at))\
+                           .limit(20)\
+                           .all()
         
-        for item in order.items[:5]:  # Берем только первые 5 позиций
-            order_data['items'].append({
-                'name': item.menu_item.name,
-                'quantity': item.quantity,
-                'price': item.price_at_time
-            })
+        result = []
+        for order in orders:
+            order_data = {
+                'id': order.id,
+                'total_amount': order.total_amount,
+                'status': order.status,
+                'created_at': order.created_at.strftime('%d.%m.%Y %H:%M'),
+                'delivery_address': order.delivery_address,
+                'phone': order.phone,
+                'items_count': len(order.items),
+                'items': []
+            }
+            
+            for item in order.items[:5]:
+                order_data['items'].append({
+                    'name': item.menu_item.name,
+                    'quantity': item.quantity,
+                    'price': item.price_at_time
+                })
+            
+            result.append(order_data)
         
-        result.append(order_data)
-    
-    return jsonify(result)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Ошибка API обновления заказов: {e}")
+        return jsonify([])
 
 # Панель администратора (просмотр заказов)
 @app.route('/admin/orders')
@@ -363,8 +380,13 @@ def admin_orders():
     if current_user.role != 'admin':
         abort(403)
     
-    orders = Order.query.order_by(desc(Order.created_at)).all()
-    return render_template('admin/orders.html', orders=orders)
+    try:
+        orders = Order.query.order_by(desc(Order.created_at)).all()
+        return render_template('admin/orders.html', orders=orders)
+    except Exception as e:
+        print(f"Ошибка при загрузке заказов администратора: {e}")
+        flash('Ошибка при загрузке заказов', 'danger')
+        return render_template('admin/orders.html', orders=[])
 
 # API для администратора - получение обновленных заказов
 @app.route('/api/admin/orders/update')
@@ -373,61 +395,74 @@ def api_admin_orders_update():
     if current_user.role != 'admin':
         abort(403)
     
-    # Получение параметров фильтрации
-    status_filter = request.args.get('status', 'all')
-    date_filter = request.args.get('date', None)
-    
-    query = Order.query
-    
-    if status_filter != 'all':
-        query = query.filter_by(status=status_filter)
-    
-    if date_filter:
-        try:
-            filter_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
-            query = query.filter(func.date(Order.created_at) == filter_date)
-        except ValueError:
-            pass
-    
-    orders = query.order_by(desc(Order.created_at)).limit(50).all()
-    
-    result = []
-    for order in orders:
-        # Обрезаем длинный адрес
-        address = order.delivery_address
-        if address and len(address) > 50:
-            address = address[:50] + '...'
-            
-        result.append({
-            'id': order.id,
-            'username': order.user.username,
-            'total_amount': order.total_amount,
-            'status': order.status,
-            'created_at': order.created_at.strftime('%d.%m.%Y %H:%M'),
-            'delivery_address': address,
-            'phone': order.phone
-        })
-    
-    return jsonify(result)
+    try:
+        # Получение параметров фильтрации
+        status_filter = request.args.get('status', 'all')
+        date_filter = request.args.get('date', None)
+        
+        query = Order.query
+        
+        if status_filter != 'all':
+            query = query.filter_by(status=status_filter)
+        
+        if date_filter:
+            try:
+                filter_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
+                query = query.filter(func.date(Order.created_at) == filter_date)
+            except ValueError:
+                pass
+        
+        orders = query.order_by(desc(Order.created_at)).limit(50).all()
+        
+        result = []
+        for order in orders:
+            # Обрезаем длинный адрес
+            address = order.delivery_address
+            if address and len(address) > 50:
+                address = address[:50] + '...'
+                
+            result.append({
+                'id': order.id,
+                'username': order.user.username,
+                'total_amount': order.total_amount,
+                'status': order.status,
+                'created_at': order.created_at.strftime('%d.%m.%Y %H:%M'),
+                'delivery_address': address,
+                'phone': order.phone
+            })
+        
+        return jsonify(result)
+    except Exception as e:
+        print(f"Ошибка API обновления заказов админа: {e}")
+        return jsonify([])
 
-# API для получения статистики (для администратора)
+# API для получения статистики
 @app.route('/api/admin/stats')
 @login_required
 def api_admin_stats():
     if current_user.role != 'admin':
         abort(403)
     
-    total_orders = Order.query.count()
-    pending_orders = Order.query.filter_by(status='pending').count()
-    today_orders = Order.query.filter(func.date(Order.created_at) == date.today()).count()
-    total_revenue = db.session.query(func.sum(Order.total_amount)).scalar() or 0
-    
-    return jsonify({
-        'total_orders': total_orders,
-        'pending_orders': pending_orders,
-        'today_orders': today_orders,
-        'total_revenue': float(total_revenue)
-    })
+    try:
+        total_orders = Order.query.count()
+        pending_orders = Order.query.filter_by(status='pending').count()
+        today_orders = Order.query.filter(func.date(Order.created_at) == date.today()).count()
+        total_revenue = db.session.query(func.sum(Order.total_amount)).scalar() or 0
+        
+        return jsonify({
+            'total_orders': total_orders,
+            'pending_orders': pending_orders,
+            'today_orders': today_orders,
+            'total_revenue': float(total_revenue)
+        })
+    except Exception as e:
+        print(f"Ошибка API статистики: {e}")
+        return jsonify({
+            'total_orders': 0,
+            'pending_orders': 0,
+            'today_orders': 0,
+            'total_revenue': 0
+        })
 
 # Обновление статуса заказа
 @app.route('/admin/order/<int:order_id>/status', methods=['POST'])
@@ -436,76 +471,93 @@ def update_order_status(order_id):
     if current_user.role != 'admin':
         abort(403)
     
-    order = Order.query.get_or_404(order_id)
-    new_status = request.json.get('status')
-    
-    if new_status in ['pending', 'preparing', 'ready', 'delivered', 'cancelled']:
-        order.status = new_status
-        db.session.commit()
-        return jsonify({'success': True})
-    
-    return jsonify({'error': 'Invalid status'}), 400
+    try:
+        order = Order.query.get_or_404(order_id)
+        new_status = request.json.get('status')
+        
+        if new_status in ['pending', 'preparing', 'ready', 'delivered', 'cancelled']:
+            order.status = new_status
+            db.session.commit()
+            return jsonify({'success': True})
+        
+        return jsonify({'error': 'Invalid status'}), 400
+    except Exception as e:
+        db.session.rollback()
+        print(f"Ошибка обновления статуса заказа: {e}")
+        return jsonify({'error': str(e)}), 500
 
 # Инициализация базы данных
 def init_db():
     with app.app_context():
-        db.create_all()
-        
-        # Создаем тестовые данные, если их нет
-        if not Category.query.first():
-            # Категории
-            categories = [
-                Category(name='Закуски', description='Легкие закуски к столу'),
-                Category(name='Основные блюда', description='Горячие блюда'),
-                Category(name='Напитки', description='Холодные и горячие напитки'),
-                Category(name='Десерты', description='Сладкие блюда')
-            ]
+        try:
+            # Создаем таблицы
+            db.create_all()
+            print("Таблицы созданы успешно")
             
-            for category in categories:
-                db.session.add(category)
-            
-            db.session.flush()  # Получаем ID категорий
-            
-            # Пример блюд с ценами в BYN
-            menu_items = [
-                MenuItem(name='Брускетта', description='С помидорами и базиликом', price=12.5, category_id=1, image='bruschetta.jpg'),
-                MenuItem(name='Стейк', description='Говяжий стейк с овощами', price=42.5, category_id=2, image='steak.jpg'),
-                MenuItem(name='Салат Цезарь', description='С курицей и соусом', price=16.0, category_id=1, image='caesar.jpg'),
-                MenuItem(name='Кофе', description='Арабика 200мл', price=7.0, category_id=3, image='coffee.jpg'),
-                MenuItem(name='Тирамису', description='Итальянский десерт', price=14.0, category_id=4, image='tiramisu.jpg'),
-                MenuItem(name='Суп Том Ям', description='Тайский острый суп с креветками', price=19.5, category_id=2, image='tomyam.jpg'),
-                MenuItem(name='Паста Карбонара', description='С беконом и сливочным соусом', price=17.0, category_id=2, image='carbonara.jpg'),
-                MenuItem(name='Чизкейк', description='Классический чизкейк', price=12.5, category_id=4, image='cheesecake.jpg')
-            ]
-            
-            for item in menu_items:
-                db.session.add(item)
-            
-            # Создаем тестового администратора с белорусским email
-            if not User.query.filter_by(username='admin').first():
-                admin = User(
-                    username='admin',
-                    email='admin@gurman.by',
-                    password=generate_password_hash('admin123'),
-                    role='admin'
-                )
-                db.session.add(admin)
-            
-            # Создаем тестового пользователя с белорусским email
-            if not User.query.filter_by(username='user').first():
-                user = User(
-                    username='user',
-                    email='user@gurman.by',
-                    password=generate_password_hash('user123'),
-                    role='customer'
-                )
-                db.session.add(user)
-            
-            db.session.commit()
-        print("База данных инициализирована!")
+            # Проверяем, есть ли уже данные
+            if not Category.query.first():
+                print("Создаем начальные данные...")
+                
+                # Категории
+                categories = [
+                    Category(name='Закуски', description='Легкие закуски к столу'),
+                    Category(name='Основные блюда', description='Горячие блюда'),
+                    Category(name='Напитки', description='Холодные и горячие напитки'),
+                    Category(name='Десерты', description='Сладкие блюда')
+                ]
+                
+                for category in categories:
+                    db.session.add(category)
+                
+                db.session.flush()  # Получаем ID категорий
+                
+                # Пример блюд с ценами в BYN
+                menu_items = [
+                    MenuItem(name='Брускетта', description='С помидорами и базиликом', price=12.5, category_id=1, image='bruschetta.jpg'),
+                    MenuItem(name='Стейк', description='Говяжий стейк с овощами', price=42.5, category_id=2, image='steak.jpg'),
+                    MenuItem(name='Салат Цезарь', description='С курицей и соусом', price=16.0, category_id=1, image='caesar.jpg'),
+                    MenuItem(name='Кофе', description='Арабика 200мл', price=7.0, category_id=3, image='coffee.jpg'),
+                    MenuItem(name='Тирамису', description='Итальянский десерт', price=14.0, category_id=4, image='tiramisu.jpg'),
+                    MenuItem(name='Суп Том Ям', description='Тайский острый суп с креветками', price=19.5, category_id=2, image='tomyam.jpg'),
+                    MenuItem(name='Паста Карбонара', description='С беконом и сливочным соусом', price=17.0, category_id=2, image='carbonara.jpg'),
+                    MenuItem(name='Чизкейк', description='Классический чизкейк', price=12.5, category_id=4, image='cheesecake.jpg')
+                ]
+                
+                for item in menu_items:
+                    db.session.add(item)
+                
+                # Создаем тестового администратора
+                if not User.query.filter_by(username='admin').first():
+                    admin = User(
+                        username='admin',
+                        email='admin@gurman.by',
+                        password=generate_password_hash('admin123'),
+                        role='admin'
+                    )
+                    db.session.add(admin)
+                
+                # Создаем тестового пользователя
+                if not User.query.filter_by(username='user').first():
+                    user = User(
+                        username='user',
+                        email='user@gurman.by',
+                        password=generate_password_hash('user123'),
+                        role='customer'
+                    )
+                    db.session.add(user)
+                
+                db.session.commit()
+                print("Начальные данные созданы")
+            else:
+                print("База данных уже содержит данные")
+                
+        except Exception as e:
+            db.session.rollback()
+            print(f"Ошибка при инициализации базы данных: {e}")
 
 # Для запуска на Render
 if __name__ == '__main__':
     init_db()
     port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
     app.run(host='0.0.0.0', port=port, debug=False)
