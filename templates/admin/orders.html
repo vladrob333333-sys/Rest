@@ -290,7 +290,7 @@
             showNotification('Ошибка сети', 'error');
         }
     }
-    
+
     // Показать детали заказа
     async function showOrderDetails(orderId) {
         try {
@@ -349,5 +349,37 @@
         };
         return statusMap[status] || status;
     }
+
+    
+// Функция обновления статистики
+    function updateStats(stats) {
+        const statCards = document.querySelectorAll('.stat-card');
+        if (statCards.length >= 4) {
+            statCards[0].querySelector('.stat-value').textContent = stats.total_orders;
+            statCards[1].querySelector('.stat-value').textContent = `${stats.total_revenue.toFixed(2)} BYN`;
+            // Если нужно добавить другие показатели
+            // statCards[2].querySelector('.stat-value').textContent = stats.pending_orders;
+            // statCards[3].querySelector('.stat-value').textContent = stats.today_orders;
+        }
+        
+        // Обновляем статистику по статусам в фильтре
+        updateStatusStats(stats.status_stats);
+    }
+    
+    // Функция обновления статистики по статусам
+    function updateStatusStats(statusStats) {
+        const statusFilter = document.getElementById('status-filter');
+        if (statusFilter) {
+            // Можно добавить отображение количества заказов рядом с каждым статусом
+            const options = statusFilter.querySelectorAll('option');
+            options.forEach(option => {
+                const status = option.value;
+                if (status !== 'all' && statusStats[status] !== undefined) {
+                    option.text = `${getStatusText(status)} (${statusStats[status]})`;
+                }
+            });
+        }
+    }
+    
 </script>
 {% endblock %}
