@@ -5,7 +5,7 @@ from werkzeug.exceptions import HTTPException
 from datetime import datetime, date, timedelta
 import json
 import os
-from sqlalchemy import desc, func, or_, and_
+from sqlalchemy import desc, func, or_
 from models import *
 from database import db
 
@@ -53,33 +53,15 @@ def utility_processor():
         }
         return status_map.get(status, status)
     
-    def get_current_time():
-        return datetime.now()
+    def format_datetime(value):
+        if value:
+            return value.strftime('%d.%m.%Y %H:%M')
+        return ''
     
-    def get_available_seats():
-        # Вычисляем свободные места на ближайшие 2 часа
-        now = datetime.now()
-        two_hours_later = now + timedelta(hours=2)
-        
-        # Всего мест в ресторане
-        total_seats = Table.query.filter_by(is_active=True).with_entities(func.sum(Table.capacity)).scalar() or 0
-        
-        # Занятые места в ближайшие 2 часа
-        reserved_seats = Reservation.query.filter(
-            and_(
-                Reservation.start_time >= now,
-                Reservation.start_time <= two_hours_later,
-                Reservation.status == 'active'
-            )
-        ).with_entities(func.sum(Reservation.guests_count)).scalar() or 0
-        
-        return total_seats - reserved_seats
+    def format_price(value):
+        return f"{value:.2f}"
     
-    return dict(
-        get_status_text=get_status_text,
-        get_current_time=get_current_time,
-        get_available_seats=get_available_seats
-    )
+    return dict(get_status_text=get_status_text, format_datetime=format_datetime, format_price=format_price)
 
 # Обработчики ошибок
 @app.errorhandler(404)
@@ -102,14 +84,12 @@ def internal_error(error):
 # Главная страница
 @app.route('/')
 def index():
-    # Пример данных для слайдера
     slider_items = [
         {'image': 'slide1.jpg', 'title': 'Добро пожаловать', 'description': 'Лучшие блюда от шеф-повара'},
         {'image': 'slide2.jpg', 'title': 'Специальное предложение', 'description': 'Скидка 20% на все заказы от 50 BYN'},
         {'image': 'slide3.jpg', 'title': 'Новое меню', 'description': 'Попробуйте наши сезонные блюда'}
     ]
     
-    # Информационные блоки
     info_blocks = [
         {'icon': 'clock', 'title': 'Часы работы', 'text': 'Пн-Вс: 10:00 - 23:00'},
         {'icon': 'phone', 'title': 'Доставка', 'text': 'Быстрая доставка за 60 минут'},
@@ -134,19 +114,19 @@ def menu():
 def order():
     if request.method == 'POST':
         try:
-            # Получаем данные из формы
             cart_items = request.json.get('items', [])
             delivery_address = request.json.get('delivery_address', '')
             phone = request.json.get('phone', '')
             notes = request.json.get('notes', '')
-            order_type = request.json.get('order_type', 'delivery')
-            reservation_time = request.json.get('reservation_time', '')
-            guests_count = request.json.get('guests_count', 1)
+            seats = request.json.get('seats', 1)
             
             if not cart_items:
                 return jsonify({'error': 'Корзина пуста'}), 400
             
-            # Считаем общую сумму
+            # Проверяем количество мест
+            seats = int(seats)
+            reservation_required = seats > 1
+            
             total_amount = 0
             order_items_data = []
             
@@ -164,11 +144,10 @@ def order():
                     'price_at_time': menu_item.price
                 })
             
-            # Проверяем, что есть действительные товары
             if len(order_items_data) == 0:
                 return jsonify({'error': 'Нет действительных товаров в заказе'}), 400
             
-            # Создаем заказ с общей суммой
+            # Создаем заказ
             order = Order(
                 user_id=current_user.id,
                 delivery_address=delivery_address,
@@ -176,65 +155,12 @@ def order():
                 notes=notes,
                 status='pending',
                 total_amount=total_amount,
-                order_type=order_type
+                seats=seats,
+                reservation_required=reservation_required
             )
             
-            # Если заказ для ресторана, создаем бронирование
-            if order_type == 'dine_in' and reservation_time:
-                try:
-                    # Проверяем доступность столиков
-                    reservation_datetime = datetime.fromisoformat(reservation_time.replace('Z', '+00:00'))
-                    end_time = reservation_datetime + timedelta(hours=2)
-                    
-                    # Находим свободные столики
-                    booked_tables = Reservation.query.filter(
-                        and_(
-                            Reservation.start_time < end_time,
-                            Reservation.end_time > reservation_datetime,
-                            Reservation.status == 'active'
-                        )
-                    ).with_entities(Reservation.table_id).all()
-                    booked_table_ids = [t[0] for t in booked_tables]
-                    
-                    # Находим подходящий столик
-                    table = Table.query.filter(
-                        Table.is_active == True,
-                        Table.capacity >= guests_count,
-                        ~Table.id.in_(booked_table_ids)
-                    ).order_by(Table.capacity).first()
-                    
-                    if not table:
-                        # Если нет столика на нужное количество, берем следующий по вместимости
-                        table = Table.query.filter(
-                            Table.is_active == True,
-                            ~Table.id.in_(booked_table_ids)
-                        ).order_by(Table.capacity).first()
-                        
-                        if not table:
-                            return jsonify({'error': 'Нет свободных столиков на выбранное время'}), 400
-                    
-                    # Создаем бронирование
-                    reservation = Reservation(
-                        user_id=current_user.id,
-                        table_id=table.id,
-                        start_time=reservation_datetime,
-                        end_time=end_time,
-                        guests_count=guests_count,
-                        status='active'
-                    )
-                    
-                    db.session.add(reservation)
-                    db.session.flush()  # Получаем ID бронирования
-                    
-                    # Связываем заказ с бронированием
-                    order.reservation_id = reservation.id
-                    
-                except Exception as e:
-                    db.session.rollback()
-                    return jsonify({'error': f'Ошибка при создании бронирования: {str(e)}'}), 400
-            
             db.session.add(order)
-            db.session.flush()  # Получаем ID заказа
+            db.session.flush()
             
             # Добавляем позиции заказа
             for item_data in order_items_data:
@@ -259,31 +185,8 @@ def order():
             print(f"Ошибка при создании заказа: {str(e)}")
             return jsonify({'error': f'Ошибка сервера: {str(e)}'}), 500
     
-    # GET запрос - отображаем форму заказа
     menu_items = MenuItem.query.filter_by(is_available=True).all()
-    
-    # Вычисляем свободные места на ближайшие 2 часа
-    now = datetime.now()
-    two_hours_later = now + timedelta(hours=2)
-    
-    total_seats = Table.query.filter_by(is_active=True).with_entities(func.sum(Table.capacity)).scalar() or 0
-    
-    reserved_seats = Reservation.query.filter(
-        and_(
-            Reservation.start_time >= now,
-            Reservation.start_time <= two_hours_later,
-            Reservation.status == 'active'
-        )
-    ).with_entities(func.sum(Reservation.guests_count)).scalar() or 0
-    
-    available_seats = total_seats - reserved_seats
-    available_tables = Table.query.filter_by(is_active=True).count()
-    
-    return render_template('order.html', 
-                         menu_items=menu_items,
-                         available_seats=available_seats,
-                         available_tables=available_tables,
-                         now=datetime.now())
+    return render_template('order.html', menu_items=menu_items)
 
 # История заказов
 @app.route('/profile/orders')
@@ -304,7 +207,6 @@ def register():
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
         
-        # Валидация
         errors = []
         if not username or len(username) < 3:
             errors.append('Имя пользователя должно содержать минимум 3 символа')
@@ -315,7 +217,6 @@ def register():
         if password != confirm_password:
             errors.append('Пароли не совпадают')
         
-        # Проверка уникальности
         if User.query.filter_by(username=username).first():
             errors.append('Пользователь с таким именем уже существует')
         if User.query.filter_by(email=email).first():
@@ -325,7 +226,6 @@ def register():
             for error in errors:
                 flash(error, 'danger')
         else:
-            # Создание пользователя
             user = User(
                 username=username,
                 email=email,
@@ -448,12 +348,13 @@ def api_user_orders_update():
             'created_at': order.created_at.strftime('%d.%m.%Y %H:%M'),
             'delivery_address': order.delivery_address,
             'phone': order.phone,
-            'order_type': order.order_type,
+            'seats': order.seats,
+            'reservation_required': order.reservation_required,
             'items_count': len(order.items),
             'items': []
         }
         
-        for item in order.items[:5]:  # Берем только первые 5 позиций
+        for item in order.items[:5]:
             order_data['items'].append({
                 'name': item.menu_item.name,
                 'quantity': item.quantity,
@@ -464,49 +365,7 @@ def api_user_orders_update():
     
     return jsonify(result)
 
-# API для получения доступных столиков
-@app.route('/api/available_seats')
-def api_available_seats():
-    # Вычисляем свободные места на ближайшие 2 часа
-    now = datetime.now()
-    two_hours_later = now + timedelta(hours=2)
-    
-    total_seats = Table.query.filter_by(is_active=True).with_entities(func.sum(Table.capacity)).scalar() or 0
-    
-    reserved_seats = Reservation.query.filter(
-        and_(
-            Reservation.start_time >= now,
-            Reservation.start_time <= two_hours_later,
-            Reservation.status == 'active'
-        )
-    ).with_entities(func.sum(Reservation.guests_count)).scalar() or 0
-    
-    available_seats = max(0, total_seats - reserved_seats)
-    available_tables = Table.query.filter_by(is_active=True).count()
-    
-    # Получаем информацию о ближайших бронированиях
-    upcoming_reservations = Reservation.query.filter(
-        Reservation.start_time >= now,
-        Reservation.status == 'active'
-    ).order_by(Reservation.start_time).limit(5).all()
-    
-    reservations_info = []
-    for res in upcoming_reservations:
-        reservations_info.append({
-            'time': res.start_time.strftime('%H:%M'),
-            'guests': res.guests_count,
-            'table': res.table.table_number
-        })
-    
-    return jsonify({
-        'available_seats': available_seats,
-        'available_tables': available_tables,
-        'total_seats': total_seats,
-        'reserved_seats': reserved_seats,
-        'upcoming_reservations': reservations_info
-    })
-
-# Панель администратора (просмотр заказов)
+# Панель администратора - просмотр заказов
 @app.route('/admin/orders')
 @login_required
 def admin_orders():
@@ -514,29 +373,28 @@ def admin_orders():
         abort(403)
     
     orders = Order.query.order_by(desc(Order.created_at)).all()
+    return render_template('admin/orders.html', orders=orders)
+
+# Администратор - просмотр деталей заказа
+@app.route('/admin/order/<int:order_id>')
+@login_required
+def admin_order_details(order_id):
+    if current_user.role != 'admin':
+        abort(403)
     
-    # Вычисляем статистику
-    total_orders = Order.query.filter(Order.status != 'cancelled').count()
-    pending_orders = Order.query.filter_by(status='pending').count()
-    today_orders = Order.query.filter(func.date(Order.created_at) == date.today()).filter(Order.status != 'cancelled').count()
-    total_revenue = db.session.query(func.sum(Order.total_amount)).filter(Order.status != 'cancelled').scalar() or 0
+    order = Order.query.get_or_404(order_id)
+    return render_template('admin/order_details.html', order=order)
+
+# Админ панель - управление меню
+@app.route('/admin/menu')
+@login_required
+def admin_menu():
+    if current_user.role != 'admin':
+        abort(403)
     
-    # Получаем информацию о столиках
-    total_tables = Table.query.filter_by(is_active=True).count()
-    occupied_tables = Reservation.query.filter(
-        Reservation.start_time <= datetime.now(),
-        Reservation.end_time >= datetime.now(),
-        Reservation.status == 'active'
-    ).count()
-    
-    return render_template('admin/orders.html', 
-                         orders=orders,
-                         total_orders=total_orders,
-                         pending_orders=pending_orders,
-                         today_orders=today_orders,
-                         total_revenue=total_revenue,
-                         total_tables=total_tables,
-                         occupied_tables=occupied_tables)
+    categories = Category.query.all()
+    menu_items = MenuItem.query.all()
+    return render_template('admin/menu.html', categories=categories, menu_items=menu_items)
 
 # API для администратора - получение обновленных заказов
 @app.route('/api/admin/orders/update')
@@ -545,7 +403,6 @@ def api_admin_orders_update():
     if current_user.role != 'admin':
         abort(403)
     
-    # Получение параметров фильтрации
     status_filter = request.args.get('status', 'all')
     date_filter = request.args.get('date', None)
     
@@ -565,7 +422,6 @@ def api_admin_orders_update():
     
     result = []
     for order in orders:
-        # Обрезаем длинный адрес
         address = order.delivery_address
         if address and len(address) > 50:
             address = address[:50] + '...'
@@ -578,84 +434,47 @@ def api_admin_orders_update():
             'created_at': order.created_at.strftime('%d.%m.%Y %H:%M'),
             'delivery_address': address,
             'phone': order.phone,
-            'order_type': order.order_type
+            'seats': order.seats,
+            'reservation_required': order.reservation_required
         })
     
     return jsonify(result)
 
-# API для получения статистики (для администратора)
+# API для получения статистики (для администратора) - ИСКЛЮЧАЕМ ОТМЕНЕННЫЕ ЗАКАЗЫ
 @app.route('/api/admin/stats')
 @login_required
 def api_admin_stats():
     if current_user.role != 'admin':
         abort(403)
     
-    # Исключаем отмененные заказы из статистики
+    # Все заказы кроме отмененных
     total_orders = Order.query.filter(Order.status != 'cancelled').count()
     pending_orders = Order.query.filter_by(status='pending').count()
-    today_orders = Order.query.filter(func.date(Order.created_at) == date.today()).filter(Order.status != 'cancelled').count()
-    total_revenue = db.session.query(func.sum(Order.total_amount)).filter(Order.status != 'cancelled').scalar() or 0
     
-    # Информация о столиках
-    total_tables = Table.query.filter_by(is_active=True).count()
-    occupied_tables = Reservation.query.filter(
-        Reservation.start_time <= datetime.now(),
-        Reservation.end_time >= datetime.now(),
-        Reservation.status == 'active'
+    # Заказы за сегодня кроме отмененных
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    today_end = datetime.combine(date.today(), datetime.max.time())
+    today_orders = Order.query.filter(
+        Order.created_at >= today_start,
+        Order.created_at <= today_end,
+        Order.status != 'cancelled'
     ).count()
+    
+    # Общая выручка кроме отмененных заказов
+    total_revenue = db.session.query(func.sum(Order.total_amount))\
+        .filter(Order.status != 'cancelled')\
+        .scalar() or 0
+    
+    # Заказы, требующие бронирования
+    reservation_orders = Order.query.filter_by(reservation_required=True, status='pending').count()
     
     return jsonify({
         'total_orders': total_orders,
         'pending_orders': pending_orders,
         'today_orders': today_orders,
         'total_revenue': float(total_revenue),
-        'total_tables': total_tables,
-        'occupied_tables': occupied_tables,
-        'available_tables': total_tables - occupied_tables
+        'reservation_orders': reservation_orders
     })
-
-# API для получения деталей заказа
-@app.route('/api/order/<int:order_id>/details')
-@login_required
-def api_order_details(order_id):
-    order = Order.query.get_or_404(order_id)
-    
-    # Проверяем права доступа
-    if current_user.role != 'admin' and order.user_id != current_user.id:
-        abort(403)
-    
-    order_data = {
-        'id': order.id,
-        'username': order.user.username,
-        'total_amount': order.total_amount,
-        'status': order.status,
-        'created_at': order.created_at.strftime('%d.%m.%Y %H:%M'),
-        'delivery_address': order.delivery_address,
-        'phone': order.phone,
-        'notes': order.notes,
-        'order_type': order.order_type,
-        'items': []
-    }
-    
-    for item in order.items:
-        item_data = {
-            'name': item.menu_item.name,
-            'quantity': item.quantity,
-            'price_at_time': item.price_at_time,
-            'total': item.quantity * item.price_at_time
-        }
-        order_data['items'].append(item_data)
-    
-    # Информация о бронировании, если есть
-    if order.reservation:
-        order_data['reservation'] = {
-            'table_number': order.reservation.table.table_number,
-            'start_time': order.reservation.start_time.strftime('%d.%m.%Y %H:%M'),
-            'end_time': order.reservation.end_time.strftime('%d.%m.%Y %H:%M'),
-            'guests_count': order.reservation.guests_count
-        }
-    
-    return jsonify(order_data)
 
 # Обновление статуса заказа
 @app.route('/admin/order/<int:order_id>/status', methods=['POST'])
@@ -668,97 +487,11 @@ def update_order_status(order_id):
     new_status = request.json.get('status')
     
     if new_status in ['pending', 'preparing', 'ready', 'delivered', 'cancelled']:
-        # Если статус меняется на "отменен", отменяем бронирование если есть
-        if new_status == 'cancelled' and order.reservation:
-            order.reservation.status = 'cancelled'
-        
         order.status = new_status
         db.session.commit()
         return jsonify({'success': True})
     
     return jsonify({'error': 'Invalid status'}), 400
-
-# Администратор - управление бронированиями
-@app.route('/admin/reservations')
-@login_required
-def admin_reservations():
-    if current_user.role != 'admin':
-        abort(403)
-    
-    # Получаем активные бронирования
-    active_reservations = Reservation.query.filter_by(status='active').order_by(Reservation.start_time).all()
-    
-    # Получаем историю бронирований
-    history_reservations = Reservation.query.filter(Reservation.status != 'active').order_by(desc(Reservation.start_time)).limit(20).all()
-    
-    # Информация о столиках
-    tables = Table.query.filter_by(is_active=True).order_by(Table.table_number).all()
-    
-    return render_template('admin/reservations.html',
-                         active_reservations=active_reservations,
-                         history_reservations=history_reservations,
-                         tables=tables)
-
-# API для управления столиками
-@app.route('/admin/tables/update', methods=['POST'])
-@login_required
-def admin_update_tables():
-    if current_user.role != 'admin':
-        abort(403)
-    
-    action = request.json.get('action')
-    
-    if action == 'free_table':
-        reservation_id = request.json.get('reservation_id')
-        reservation = Reservation.query.get_or_404(reservation_id)
-        reservation.status = 'completed'
-        db.session.commit()
-        return jsonify({'success': True})
-    
-    elif action == 'add_table':
-        table_number = request.json.get('table_number')
-        capacity = request.json.get('capacity', 4)
-        
-        if not table_number:
-            return jsonify({'error': 'Номер столика обязателен'}), 400
-        
-        # Проверяем, нет ли столика с таким номером
-        existing_table = Table.query.filter_by(table_number=table_number).first()
-        if existing_table:
-            return jsonify({'error': f'Столик с номером {table_number} уже существует'}), 400
-        
-        table = Table(table_number=table_number, capacity=capacity)
-        db.session.add(table)
-        db.session.commit()
-        
-        return jsonify({'success': True, 'table_id': table.id})
-    
-    elif action == 'remove_table':
-        table_id = request.json.get('table_id')
-        table = Table.query.get_or_404(table_id)
-        
-        # Проверяем, нет ли активных бронирований на этот столик
-        active_reservations = Reservation.query.filter_by(table_id=table_id, status='active').first()
-        if active_reservations:
-            return jsonify({'error': 'Нельзя удалить столик с активными бронированиями'}), 400
-        
-        table.is_active = False
-        db.session.commit()
-        
-        return jsonify({'success': True})
-    
-    return jsonify({'error': 'Неизвестное действие'}), 400
-
-# Администратор - управление меню
-@app.route('/admin/menu')
-@login_required
-def admin_menu():
-    if current_user.role != 'admin':
-        abort(403)
-    
-    categories = Category.query.all()
-    menu_items = MenuItem.query.all()
-    return render_template('admin/menu.html', categories=categories, menu_items=menu_items)
 
 # Администратор - добавление новой категории
 @app.route('/admin/menu/category/add', methods=['POST'])
@@ -775,13 +508,11 @@ def admin_add_category():
             flash('Название категории обязательно', 'danger')
             return redirect(url_for('admin_menu'))
         
-        # Проверяем, нет ли уже категории с таким названием
         existing_category = Category.query.filter_by(name=name).first()
         if existing_category:
             flash('Категория с таким названием уже существует', 'danger')
             return redirect(url_for('admin_menu'))
         
-        # Создаем новую категорию
         category = Category(name=name, description=description)
         db.session.add(category)
         db.session.commit()
@@ -806,13 +537,11 @@ def admin_edit_category(category_id):
             flash('Название категории обязательно', 'danger')
             return redirect(url_for('admin_menu'))
         
-        # Проверяем, нет ли уже категории с таким названием (кроме текущей)
         existing_category = Category.query.filter(Category.name == name, Category.id != category_id).first()
         if existing_category:
             flash('Категория с таким названием уже существует', 'danger')
             return redirect(url_for('admin_menu'))
         
-        # Обновляем категорию
         category.name = name
         category.description = description
         db.session.commit()
@@ -831,7 +560,6 @@ def admin_delete_category(category_id):
     
     category = Category.query.get_or_404(category_id)
     
-    # Проверяем, есть ли блюда в этой категории
     if category.items:
         flash('Невозможно удалить категорию, в которой есть блюда', 'danger')
         return redirect(url_for('admin_menu'))
@@ -858,7 +586,6 @@ def admin_add_item():
         category_id = request.form.get('category_id')
         image = request.form.get('image')
         
-        # Валидация
         errors = []
         if not name:
             errors.append('Название блюда обязательно')
@@ -880,7 +607,6 @@ def admin_add_item():
                 flash(error, 'danger')
             return render_template('admin/add_item.html', categories=categories)
         
-        # Создаем новое блюдо
         menu_item = MenuItem(
             name=name,
             description=description,
@@ -916,7 +642,6 @@ def admin_edit_item(item_id):
         image = request.form.get('image')
         is_available = request.form.get('is_available') == 'on'
         
-        # Валидация
         errors = []
         if not name:
             errors.append('Название блюда обязательно')
@@ -938,7 +663,6 @@ def admin_edit_item(item_id):
                 flash(error, 'danger')
             return render_template('admin/edit_item.html', menu_item=menu_item, categories=categories)
         
-        # Обновляем блюдо
         menu_item.name = name
         menu_item.description = description
         menu_item.price = price
@@ -962,14 +686,11 @@ def admin_delete_item(item_id):
     
     menu_item = MenuItem.query.get_or_404(item_id)
     
-    # Проверяем, есть ли заказы с этим блюдом
     if menu_item.order_items:
-        # Вместо удаления делаем блюдо недоступным
         menu_item.is_available = False
         db.session.commit()
         flash('Блюдо отмечено как недоступное (есть связанные заказы)', 'warning')
     else:
-        # Удаляем блюдо полностью
         db.session.delete(menu_item)
         db.session.commit()
         flash('Блюдо успешно удалено', 'success')
@@ -981,9 +702,7 @@ def init_db():
     with app.app_context():
         db.create_all()
         
-        # Создаем тестовые данные, если их нет
         if not Category.query.first():
-            # Категории
             categories = [
                 Category(name='Закуски', description='Легкие закуски к столу'),
                 Category(name='Основные блюда', description='Горячие блюда'),
@@ -994,9 +713,8 @@ def init_db():
             for category in categories:
                 db.session.add(category)
             
-            db.session.flush()  # Получаем ID категорий
+            db.session.flush()
             
-            # Пример блюд с ценами в BYN
             menu_items = [
                 MenuItem(name='Брускетта', description='С помидорами и базиликом', price=12.5, category_id=1, image='bruschetta.jpg'),
                 MenuItem(name='Стейк', description='Говяжий стейк с овощами', price=42.5, category_id=2, image='steak.jpg'),
@@ -1011,13 +729,6 @@ def init_db():
             for item in menu_items:
                 db.session.add(item)
             
-            # Создаем столики (10 столиков по 4 места каждый)
-            if not Table.query.first():
-                for i in range(1, 11):
-                    table = Table(table_number=i, capacity=4, is_active=True)
-                    db.session.add(table)
-            
-            # Создаем тестового администратора с белорусским email
             if not User.query.filter_by(username='admin').first():
                 admin = User(
                     username='admin',
@@ -1027,7 +738,6 @@ def init_db():
                 )
                 db.session.add(admin)
             
-            # Создаем тестового пользователя с белорусским email
             if not User.query.filter_by(username='user').first():
                 user = User(
                     username='user',
