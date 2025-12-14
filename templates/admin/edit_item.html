@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Редактировать блюдо - Ресторан "Гурман"{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="form-container">
+        <h2 class="section-title">Редактировать блюдо</h2>
+        
+        <form method="POST" action="{{ url_for('admin_edit_item', item_id=menu_item.id) }}" data-validate>
+            <div class="form-group">
+                <label for="name">Название блюда *</label>
+                <input type="text" id="name" name="name" class="form-control" value="{{ menu_item.name }}" required>
+                <span class="form-error"></span>
+            </div>
+            
+            <div class="form-group">
+                <label for="description">Описание</label>
+                <textarea id="description" name="description" class="form-control" rows="3">{{ menu_item.description or '' }}</textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="price">Цена (BYN) *</label>
+                <input type="number" id="price" name="price" class="form-control" step="0.01" min="0.01" 
+                       value="{{ menu_item.price }}" required>
+                <span class="form-error"></span>
+            </div>
+            
+            <div class="form-group">
+                <label for="category_id">Категория *</label>
+                <select id="category_id" name="category_id" class="form-control" required>
+                    <option value="">Выберите категорию</option>
+                    {% for category in categories %}
+                    <option value="{{ category.id }}" {% if category.id == menu_item.category_id %}selected{% endif %}>
+                        {{ category.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <span class="form-error"></span>
+            </div>
+            
+            <div class="form-group">
+                <label for="image">Изображение (URL или имя файла)</label>
+                <input type="text" id="image" name="image" class="form-control" 
+                       value="{{ menu_item.image or '' }}"
+                       placeholder="например: dish.jpg или https://example.com/image.jpg">
+            </div>
+            
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" name="is_available" {% if menu_item.is_available %}checked{% endif %}>
+                    Блюдо доступно для заказа
+                </label>
+            </div>
+            
+            <div class="form-group">
+                <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+                <a href="{{ url_for('admin_menu') }}" class="btn btn-outline">Отмена</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .form-container {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+    
+    .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+    }
+    
+    .checkbox-label input {
+        width: auto;
+    }
+</style>
+{% endblock %}
