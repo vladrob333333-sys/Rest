@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}Меню - Ресторан "Гурман"{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="section-title">Наше меню</h1>
+    
+    <div class="menu-filters">
+        <button class="filter-btn active" data-category="all">Все</button>
+        {% for category in categories %}
+        <button class="filter-btn" data-category="{{ category.id }}">{{ category.name }}</button>
+        {% endfor %}
+    </div>
+    
+    <div id="menu-container" class="menu-container">
+        <!-- Меню будет загружено через JavaScript -->
+    </div>
+</div>
+
+<style>
+    .menu-filters {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 30px;
+        justify-content: center;
+    }
+    
+    .filter-btn {
+        padding: 8px 20px;
+        background-color: var(--gray-light);
+        border: none;
+        border-radius: 20px;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .filter-btn.active {
+        background-color: var(--primary-color);
+        color: white;
+    }
+    
+    .filter-btn:hover:not(.active) {
+        background-color: var(--gray);
+        color: white;
+    }
+    
+    .menu-container {
+        display: grid;
+        gap: 30px;
+    }
+    
+    .menu-category {
+        background-color: white;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    
+    .menu-category h3 {
+        color: var(--primary-color);
+        margin-bottom: 10px;
+        border-bottom: 2px solid var(--secondary-color);
+        padding-bottom: 10px;
+    }
+    
+    .category-description {
+        color: var(--gray-dark);
+        margin-bottom: 20px;
+        font-style: italic;
+    }
+    
+    .menu-items {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+    }
+    
+    .menu-item {
+        display: flex;
+        gap: 15px;
+        padding: 15px;
+        border: 1px solid var(--gray-light);
+        border-radius: 8px;
+        transition: transform 0.3s, box-shadow 0.3s;
+    }
+    
+    .menu-item:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    
+    .item-image {
+        width: 100px;
+        height: 100px;
+        background-size: cover;
+        background-position: center;
+        border-radius: 8px;
+        flex-shrink: 0;
+    }
+    
+    .item-info {
+        flex: 1;
+    }
+    
+    .item-info h4 {
+        margin-bottom: 5px;
+        color: var(--heading-color);
+    }
+    
+    .item-description {
+        color: var(--gray);
+        font-size: 0.9rem;
+        margin-bottom: 10px;
+        line-height: 1.4;
+    }
+    
+    .item-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .item-price {
+        font-weight: 700;
+        color: var(--primary-color);
+        font-size: 1.1rem;
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Загрузка меню
+        fetch('/api/menu')
+            .then(response => response.json())
+            .then(data => {
+                renderMenu(data);
+                setupFilters(data);
+            });
+        
+        function renderMenu(categories) {
+            const menuContainer = document.getElementById('menu-container');
+            let html = '';
+            
+            categories.forEach(category => {
+                html += `
+                    <div class="menu-category" data-category="${category.id}">
+                        <h3>${category.name}</h3>
+                        ${category.description ? `<p class="category-description">${category.description}</p>` : ''}
+                        <div class="menu-items">
+                `;
+                
+                category.items.forEach(item => {
+                    html += `
+                        <div class="menu-item" data-item-id="${item.id}">
+                            <div class="item-image" style="background-image: url('${item.image || '/static/images/default-dish.jpg'}')"></div>
+                            <div class="item-info">
+                                <h4>${item.name}</h4>
+                                <p class="item-description">${item.description}</p>
+                                <div class="item-footer">
+                                    <span class="item-price">${item.price}₽</span>
+                                    <button class="btn btn-small" onclick="addToCart(${item.id}, '${item.name.replace(/'/g, "\\'")}', ${item.price}, '${item.image || ''}')">
+                                        В корзину
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+            });
+            
+            menuContainer.innerHTML = html;
+        }
+        
+        function setupFilters(categories) {
+            const filterButtons = document.querySelectorAll('.filter-btn');
+            const menuCategories = document.querySelectorAll('.menu-category');
+            
+            filterButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // Убираем активный класс у всех кнопок
+                    filterButtons.forEach(btn => btn.classList.remove('active'));
+                    // Добавляем активный класс текущей кнопке
+                    this.classList.add('active');
+                    
+                    const categoryId = this.getAttribute('data-category');
+                    
+                    if (categoryId === 'all') {
+                        // Показать все категории
+                        menuCategories.forEach(cat => {
+                            cat.style.display = 'block';
+                        });
+                    } else {
+                        // Показать только выбранную категорию
+                        menuCategories.forEach(cat => {
+                            if (cat.getAttribute('data-category') === categoryId) {
+                                cat.style.display = 'block';
+                            } else {
+                                cat.style.display = 'none';
+                            }
+                        });
+                    }
+                });
+            });
+        }
+    });
+</script>
+{% endblock %}

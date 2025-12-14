@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Главная - Ресторан "Гурман"{% endblock %}
+
+{% block content %}
+    <!-- Слайдер -->
+    <section class="slider">
+        <div class="slides">
+            {% for item in slider_items %}
+            <div class="slide">
+                <div class="slide-content">
+                    <h1>{{ item.title }}</h1>
+                    <p>{{ item.description }}</p>
+                    <a href="{{ url_for('menu') }}" class="btn btn-primary">Смотреть меню</a>
+                </div>
+                <div class="slide-image" style="background-image: url('{{ url_for('static', filename='images/' + item.image) }}');"></div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="slider-controls">
+            <button class="slider-prev"><i class="fas fa-chevron-left"></i></button>
+            <button class="slider-next"><i class="fas fa-chevron-right"></i></button>
+        </div>
+    </section>
+
+    <!-- Информационные блоки -->
+    <section class="info-blocks">
+        <div class="container">
+            <h2 class="section-title">Почему выбирают нас</h2>
+            <div class="blocks-grid">
+                {% for block in info_blocks %}
+                <div class="info-block">
+                    <div class="block-icon">
+                        <i class="fas fa-{{ block.icon }}"></i>
+                    </div>
+                    <h3>{{ block.title }}</h3>
+                    <p>{{ block.text }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+
+    <!-- Популярные блюда -->
+    <section class="popular-dishes">
+        <div class="container">
+            <h2 class="section-title">Популярные блюда</h2>
+            <div class="dishes-grid" id="popular-dishes">
+                <!-- Блюда будут загружены через JavaScript -->
+            </div>
+        </div>
+    </section>
+
+    <!-- О нас -->
+    <section class="about">
+        <div class="container">
+            <div class="about-content">
+                <h2 class="section-title">О нашем ресторане</h2>
+                <p>Ресторан "Гурман" работает с 2010 года, предлагая гостям изысканные блюда европейской и авторской кухни. Наши шеф-повара используют только свежие продукты от проверенных поставщиков.</p>
+                <p>Мы гордимся уютной атмосферой, профессиональным обслуживанием и вниманием к деталям. Идеальное место для деловых встреч, семейных ужинов и романтических вечеров.</p>
+                <div class="stats">
+                    <div class="stat">
+                        <h3>5000+</h3>
+                        <p>Довольных клиентов</p>
+                    </div>
+                    <div class="stat">
+                        <h3>12+</h3>
+                        <p>Лет опыта</p>
+                    </div>
+                    <div class="stat">
+                        <h3>50+</h3>
+                        <p>Блюд в меню</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Загрузка популярных блюд
+    fetch('/api/menu')
+        .then(response => response.json())
+        .then(data => {
+            const dishesGrid = document.getElementById('popular-dishes');
+            let dishes = [];
+            
+            // Собираем все блюда
+            data.forEach(category => {
+                dishes = dishes.concat(category.items);
+            });
+            
+            // Берем первые 4 блюда
+            dishes.slice(0, 4).forEach(dish => {
+                dishesGrid.innerHTML += `
+                    <div class="dish-card">
+                        <div class="dish-image" style="background-image: url('${dish.image || '/static/images/default-dish.jpg'}')"></div>
+                        <div class="dish-info">
+                            <h3>${dish.name}</h3>
+                            <p class="dish-description">${dish.description.substring(0, 60)}...</p>
+                            <div class="dish-footer">
+                                <span class="dish-price">${dish.price}₽</span>
+                                <button class="btn btn-small add-to-cart" data-id="${dish.id}">В корзину</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            // Добавляем обработчики для кнопок корзины
+            document.querySelectorAll('.add-to-cart').forEach(button => {
+                button.addEventListener('click', function() {
+                    if (!isAuthenticated) {
+                        window.location.href = '/login';
+                        return;
+                    }
+                    
+                    const itemId = this.getAttribute('data-id');
+                    // Логика добавления в корзину
+                    alert('Товар добавлен в корзину!');
+                });
+            });
+        });
+    
+    // Слайдер
+    const slides = document.querySelectorAll('.slide');
+    let currentSlide = 0;
+    
+    function showSlide(index) {
+        slides.forEach((slide, i) => {
+            slide.style.display = i === index ? 'flex' : 'none';
+        });
+    }
+    
+    document.querySelector('.slider-next').addEventListener('click', () => {
+        currentSlide = (currentSlide + 1) % slides.length;
+        showSlide(currentSlide);
+    });
+    
+    document.querySelector('.slider-prev').addEventListener('click', () => {
+        currentSlide = (currentSlide - 1 + slides.length) % slides.length;
+        showSlide(currentSlide);
+    });
+    
+    // Автопереключение слайдов
+    setInterval(() => {
+        currentSlide = (currentSlide + 1) % slides.length;
+        showSlide(currentSlide);
+    }, 5000);
+    
+    // Проверка авторизации
+    const isAuthenticated = {{ 'true' if current_user.is_authenticated else 'false' }};
+</script>
+{% endblock %}

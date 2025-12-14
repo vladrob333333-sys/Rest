@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Регистрация - Ресторан "Гурман"{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="form-container">
+        <h2 class="section-title">Регистрация</h2>
+        
+        <form method="POST" action="{{ url_for('register') }}" data-validate>
+            <div class="form-group">
+                <label for="username">Имя пользователя</label>
+                <input type="text" 
+                       id="username" 
+                       name="username" 
+                       class="form-control" 
+                       required
+                       minlength="3"
+                       placeholder="Введите имя пользователя">
+                <span class="form-error"></span>
+            </div>
+            
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" 
+                       id="email" 
+                       name="email" 
+                       class="form-control" 
+                       required
+                       placeholder="Введите email">
+                <span class="form-error"></span>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Пароль</label>
+                <input type="password" 
+                       id="password" 
+                       name="password" 
+                       class="form-control" 
+                       required
+                       data-min-length="6"
+                       placeholder="Введите пароль (минимум 6 символов)">
+                <span class="form-error"></span>
+            </div>
+            
+            <div class="form-group">
+                <label for="confirm_password">Подтвердите пароль</label>
+                <input type="password" 
+                       id="confirm_password" 
+                       name="confirm_password" 
+                       class="form-control" 
+                       required
+                       data-match="password"
+                       placeholder="Повторите пароль">
+                <span class="form-error"></span>
+            </div>
+            
+            <div class="form-group">
+                <button type="submit" class="btn btn-primary btn-block">Зарегистрироваться</button>
+            </div>
+            
+            <div class="form-footer">
+                <p>Уже есть аккаунт? <a href="{{ url_for('login') }}">Войти</a></p>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .btn-block {
+        width: 100%;
+        padding: 12px;
+    }
+    
+    .form-footer {
+        text-align: center;
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid #eee;
+    }
+    
+    .form-footer a {
+        color: var(--primary-color);
+        text-decoration: none;
+        font-weight: 500;
+    }
+    
+    .form-footer a:hover {
+        text-decoration: underline;
+    }
+</style>
+{% endblock %}
