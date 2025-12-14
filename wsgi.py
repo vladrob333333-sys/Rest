@@ -1,7 +1,7 @@
-from app import app, init_db
+from app import app
 
-# Инициализация базы данных при запуске
+# Инициализация базы данных происходит в app.py
+# Нет необходимости вызывать здесь, так как app.py уже делает это
+
 if __name__ == "__main__":
-    with app.app_context():
-        init_db()
-    
+    app.run()
