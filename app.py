@@ -20,11 +20,6 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# Инициализация базы данных при старте приложения
-with app.app_context():
-    db.create_all()
-    print("База данных проверена/создана")
-
 @login_manager.user_loader
 def load_user(user_id):
     try:
@@ -47,7 +42,6 @@ def track_page_view():
             db.session.commit()
     except Exception as e:
         db.session.rollback()
-        print(f"Ошибка при отслеживании просмотра: {e}")
 
 # Вспомогательная функция для перевода статусов
 @app.context_processor
@@ -105,9 +99,13 @@ def index():
 # Страница меню
 @app.route('/menu')
 def menu():
-    categories = Category.query.all()
-    menu_items = MenuItem.query.filter_by(is_available=True).all()
-    return render_template('menu.html', categories=categories, menu_items=menu_items)
+    try:
+        categories = Category.query.all()
+        menu_items = MenuItem.query.filter_by(is_available=True).all()
+        return render_template('menu.html', categories=categories, menu_items=menu_items)
+    except:
+        # Если база данных не готова, показываем пустое меню
+        return render_template('menu.html', categories=[], menu_items=[])
 
 # Страница заказа
 @app.route('/order', methods=['GET', 'POST'])
@@ -601,68 +599,7 @@ def add_category():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-# Создание тестовых данных
-def create_test_data():
-    try:
-        # Проверяем, есть ли уже данные
-        if not Category.query.first():
-            # Категории
-            categories = [
-                Category(name='Закуски', description='Легкие закуски к столу'),
-                Category(name='Основные блюда', description='Горячие блюда'),
-                Category(name='Напитки', description='Холодные и горячие напитки'),
-                Category(name='Десерты', description='Сладкие блюда')
-            ]
-            
-            for category in categories:
-                db.session.add(category)
-            
-            db.session.flush()
-            
-            # Пример блюд с ценами в BYN
-            menu_items = [
-                MenuItem(name='Брускетта', description='С помидорами и базиликом', price=12.5, category_id=1),
-                MenuItem(name='Стейк', description='Говяжий стейк с овощами', price=42.5, category_id=2),
-                MenuItem(name='Салат Цезарь', description='С курицей и соусом', price=16.0, category_id=1),
-                MenuItem(name='Кофе', description='Арабика 200мл', price=7.0, category_id=3),
-                MenuItem(name='Тирамису', description='Итальянский десерт', price=14.0, category_id=4)
-            ]
-            
-            for item in menu_items:
-                db.session.add(item)
-            
-            # Создаем тестового администратора
-            if not User.query.filter_by(username='admin').first():
-                admin = User(
-                    username='admin',
-                    email='admin@gurman.by',
-                    password=generate_password_hash('admin123'),
-                    role='admin'
-                )
-                db.session.add(admin)
-            
-            # Создаем тестового пользователя
-            if not User.query.filter_by(username='user').first():
-                user = User(
-                    username='user',
-                    email='user@gurman.by',
-                    password=generate_password_hash('user123'),
-                    role='customer'
-                )
-                db.session.add(user)
-            
-            db.session.commit()
-            print("Тестовые данные созданы!")
-        else:
-            print("Тестовые данные уже существуют")
-    except Exception as e:
-        print(f"Ошибка при создании тестовых данных: {e}")
-
 # Для запуска на Render
 if __name__ == '__main__':
-    # Создаем тестовые данные при запуске
-    with app.app_context():
-        create_test_data()
-    
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
