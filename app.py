@@ -421,24 +421,41 @@ def api_admin_orders_update():
     
     return jsonify(result)
 
-# API для получения статистики (для администратора) - ИЗМЕНЕНО: исключаем отмененные заказы
+# API для получения статистики (для администратора)
 @app.route('/api/admin/stats')
 @login_required
 def api_admin_stats():
     if current_user.role != 'admin':
         abort(403)
     
-    # Исключаем отмененные заказы из статистики
-    total_orders = Order.query.filter(Order.status != 'cancelled').count()
-    pending_orders = Order.query.filter_by(status='pending').count()
-    today_orders = Order.query.filter(func.date(Order.created_at) == date.today()).filter(Order.status != 'cancelled').count()
-    total_revenue = db.session.query(func.sum(Order.total_amount)).filter(Order.status != 'cancelled').scalar() or 0
+    # ВСЕ заказы (включая отмененные для общего счета)
+    total_orders = Order.query.count()
+    
+    # Только активные заказы для статистики
+    active_orders = Order.query.filter(Order.status != 'cancelled')
+    
+    # Заказы на сегодня (исключая отмененные)
+    today_active_orders = active_orders.filter(func.date(Order.created_at) == date.today())
+    
+    # Общая выручка (исключая отмененные)
+    total_revenue = db.session.query(func.sum(Order.total_amount))\
+                              .filter(Order.status != 'cancelled')\
+                              .scalar() or 0
+    
+    # Отмененные заказы для информации
+    cancelled_orders = Order.query.filter_by(status='cancelled').count()
+    cancelled_revenue = db.session.query(func.sum(Order.total_amount))\
+                                 .filter(Order.status == 'cancelled')\
+                                 .scalar() or 0
     
     return jsonify({
-        'total_orders': total_orders,
-        'pending_orders': pending_orders,
-        'today_orders': today_orders,
-        'total_revenue': float(total_revenue)
+        'total_orders': total_orders,  # Все заказы
+        'active_orders': active_orders.count(),  # Активные заказы
+        'pending_orders': Order.query.filter_by(status='pending').count(),
+        'today_orders': today_active_orders.count(),
+        'total_revenue': float(total_revenue),  # Только неотмененные
+        'cancelled_orders': cancelled_orders,
+        'cancelled_revenue': float(cancelled_revenue)
     })
 
 # Обновление статуса заказа
