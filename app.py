@@ -6,7 +6,7 @@ from datetime import datetime, date
 import json
 import os
 from sqlalchemy import desc, func
-from models import *
+from models import * 
 from database import db
 
 app = Flask(__name__)
