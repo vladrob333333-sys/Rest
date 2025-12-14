@@ -20,22 +20,23 @@
             <input type="date" id="date-filter" class="form-control">
         </div>
         
-        <div class="stats">
+        <div class="stats" id="stats-container">
+            <!-- Статистика будет загружена через JavaScript -->
             <div class="stat-card">
                 <span class="stat-label">Всего заказов</span>
-                <span class="stat-value" id="stat-total-orders">{{ total_orders }}</span>
+                <span class="stat-value" id="total-orders">0</span>
             </div>
             <div class="stat-card">
-                <span class="stat-label">Ожидают</span>
-                <span class="stat-value" id="stat-pending-orders">{{ pending_orders }}</span>
+                <span class="stat-label">На сумму</span>
+                <span class="stat-value" id="total-revenue">0 BYN</span>
             </div>
             <div class="stat-card">
-                <span class="stat-label">Выручка</span>
-                <span class="stat-value" id="stat-total-revenue">{{ "%.2f"|format(total_revenue) }} BYN</span>
+                <span class="stat-label">Сегодня</span>
+                <span class="stat-value" id="today-orders">0</span>
             </div>
             <div class="stat-card">
-                <span class="stat-label">Занято столов</span>
-                <span class="stat-value" id="stat-occupied-tables">{{ occupied_tables }}/{{ total_tables }}</span>
+                <span class="stat-label">Ожидают брони</span>
+                <span class="stat-value" id="reservation-orders">0</span>
             </div>
         </div>
     </div>
@@ -47,35 +48,36 @@
                     <th>ID</th>
                     <th>Клиент</th>
                     <th>Дата</th>
-                    <th>Тип</th>
                     <th>Сумма</th>
+                    <th>Места</th>
                     <th>Статус</th>
                     <th>Действия</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="orders-table-body">
                 {% for order in orders %}
                 <tr class="order-row" data-status="{{ order.status }}" data-date="{{ order.created_at.strftime('%Y-%m-%d') }}">
                     <td>#{{ order.id }}</td>
                     <td>{{ order.user.username }}</td>
                     <td>{{ order.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                    <td>{{ order.total_amount }} BYN</td>
                     <td>
-                        {% if order.order_type == 'delivery' %}
-                        <span class="order-type delivery">Доставка</span>
-                        {% else %}
-                        <span class="order-type dine-in">В ресторане</span>
+                        {{ order.seats }}
+                        {% if order.reservation_required %}
+                        <span class="reservation-indicator" title="Требуется бронирование">
+                            <i class="fas fa-calendar-alt"></i>
+                        </span>
                         {% endif %}
                     </td>
-                    <td>{{ order.total_amount }} BYN</td>
                     <td>
                         <span class="status status-{{ order.status }}">
                             {{ get_status_text(order.status) }}
                         </span>
                     </td>
                     <td>
-                        <button class="btn btn-small" onclick="showOrderDetails({{ order.id }})">
+                        <a href="{{ url_for('admin_order_details', order_id=order.id) }}" class="btn btn-small">
                             <i class="fas fa-eye"></i> Детали
-                        </button>
+                        </a>
                         <select class="status-select" data-order-id="{{ order.id }}" onchange="updateOrderStatus({{ order.id }}, this.value)">
                             <option value="pending" {% if order.status == 'pending' %}selected{% endif %}>Ожидает</option>
                             <option value="preparing" {% if order.status == 'preparing' %}selected{% endif %}>Готовится</option>
@@ -88,16 +90,6 @@
                 {% endfor %}
             </tbody>
         </table>
-    </div>
-</div>
-
-<!-- Модальное окно с деталями заказа -->
-<div id="order-details-modal" class="modal">
-    <div class="modal-content">
-        <span class="close-modal">&times;</span>
-        <div id="order-details-content">
-            <!-- Детали заказа будут загружены здесь -->
-        </div>
     </div>
 </div>
 
@@ -171,6 +163,12 @@
         background-color: rgba(46, 139, 87, 0.05);
     }
     
+    .reservation-indicator {
+        color: var(--info);
+        margin-left: 5px;
+        cursor: help;
+    }
+    
     .status-select {
         padding: 5px 10px;
         border-radius: 5px;
@@ -178,104 +176,14 @@
         background-color: white;
         cursor: pointer;
         font-size: 0.9rem;
-        margin-left: 10px;
+        margin-top: 5px;
+        display: block;
+        width: 100%;
     }
     
     .status-select:focus {
         outline: none;
         border-color: var(--primary-color);
-    }
-    
-    .order-type {
-        padding: 3px 8px;
-        border-radius: 12px;
-        font-size: 0.8rem;
-        font-weight: 500;
-    }
-    
-    .order-type.delivery {
-        background-color: var(--info);
-        color: white;
-    }
-    
-    .order-type.dine-in {
-        background-color: var(--success);
-        color: white;
-    }
-    
-    /* Модальное окно */
-    .modal {
-        display: none;
-        position: fixed;
-        z-index: 1000;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0,0,0,0.5);
-    }
-    
-    .modal-content {
-        background-color: white;
-        margin: 5% auto;
-        padding: 30px;
-        border-radius: 10px;
-        width: 90%;
-        max-width: 800px;
-        max-height: 80vh;
-        overflow-y: auto;
-        position: relative;
-    }
-    
-    .close-modal {
-        position: absolute;
-        right: 20px;
-        top: 20px;
-        font-size: 1.5rem;
-        cursor: pointer;
-        color: var(--gray);
-    }
-    
-    .close-modal:hover {
-        color: var(--primary-color);
-    }
-    
-    .order-details-container {
-        margin-top: 20px;
-    }
-    
-    .order-details-container .order-card {
-        box-shadow: none;
-        border: 1px solid var(--gray-light);
-    }
-    
-    .order-items-table {
-        width: 100%;
-        margin-top: 20px;
-        border-collapse: collapse;
-    }
-    
-    .order-items-table th {
-        background-color: var(--background-color);
-        padding: 10px;
-        text-align: left;
-    }
-    
-    .order-items-table td {
-        padding: 10px;
-        border-bottom: 1px solid var(--gray-light);
-    }
-    
-    .reservation-info {
-        background-color: var(--background-color);
-        padding: 15px;
-        border-radius: 8px;
-        margin-top: 20px;
-    }
-    
-    .reservation-info h4 {
-        color: var(--primary-color);
-        margin-bottom: 10px;
     }
     
     @media (max-width: 768px) {
@@ -296,34 +204,92 @@
             display: block;
             overflow-x: auto;
         }
+        
+        .stat-card {
+            min-width: 100px;
+            padding: 10px 15px;
+        }
+        
+        .stat-value {
+            font-size: 1.2rem;
+        }
     }
 </style>
 
-{% block scripts %}
 <script>
-    // Фильтрация таблицы
-    document.getElementById('status-filter').addEventListener('change', filterTable);
-    document.getElementById('date-filter').addEventListener('change', filterTable);
+    // Глобальная переменная для интервала обновления
+    let refreshInterval;
     
-    function filterTable() {
+    // Функция для обновления данных
+    function refreshAdminData() {
+        // Получаем текущие значения фильтров
         const statusFilter = document.getElementById('status-filter').value;
         const dateFilter = document.getElementById('date-filter').value;
         
-        document.querySelectorAll('.order-row').forEach(row => {
-            let show = true;
+        // Обновляем список заказов
+        fetch(`/api/admin/orders/update?status=${statusFilter}&date=${dateFilter}`)
+            .then(response => response.json())
+            .then(data => {
+                updateOrdersTable(data);
+            })
+            .catch(error => console.error('Ошибка обновления заказов:', error));
+        
+        // Обновляем статистику
+        fetch('/api/admin/stats')
+            .then(response => response.json())
+            .then(data => {
+                updateStats(data);
+            })
+            .catch(error => console.error('Ошибка обновления статистики:', error));
+    }
+    
+    // Функция обновления таблицы заказов
+    function updateOrdersTable(orders) {
+        const tbody = document.getElementById('orders-table-body');
+        if (!tbody) return;
+        
+        let html = '';
+        orders.forEach(order => {
+            const reservationIcon = order.reservation_required ? 
+                '<span class="reservation-indicator" title="Требуется бронирование"><i class="fas fa-calendar-alt"></i></span>' : '';
             
-            // Фильтр по статусу
-            if (statusFilter !== 'all' && row.getAttribute('data-status') !== statusFilter) {
-                show = false;
-            }
-            
-            // Фильтр по дате
-            if (dateFilter && row.getAttribute('data-date') !== dateFilter) {
-                show = false;
-            }
-            
-            row.style.display = show ? '' : 'none';
+            html += `
+                <tr class="order-row" data-status="${order.status}" data-date="${order.created_at.split(' ')[0].replace(/\./g, '-')}">
+                    <td>#${order.id}</td>
+                    <td>${order.username}</td>
+                    <td>${order.created_at}</td>
+                    <td>${order.total_amount} BYN</td>
+                    <td>${order.seats} ${reservationIcon}</td>
+                    <td>
+                        <span class="status status-${order.status}">
+                            ${getStatusText(order.status)}
+                        </span>
+                    </td>
+                    <td>
+                        <a href="/admin/order/${order.id}" class="btn btn-small">
+                            <i class="fas fa-eye"></i> Детали
+                        </a>
+                        <select class="status-select" data-order-id="${order.id}" onchange="updateOrderStatus(${order.id}, this.value)">
+                            <option value="pending" ${order.status === 'pending' ? 'selected' : ''}>Ожидает</option>
+                            <option value="preparing" ${order.status === 'preparing' ? 'selected' : ''}>Готовится</option>
+                            <option value="ready" ${order.status === 'ready' ? 'selected' : ''}>Готов</option>
+                            <option value="delivered" ${order.status === 'delivered' ? 'selected' : ''}>Доставлен</option>
+                            <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Отменить</option>
+                        </select>
+                    </td>
+                </tr>
+            `;
         });
+        
+        tbody.innerHTML = html;
+    }
+    
+    // Функция обновления статистики
+    function updateStats(stats) {
+        document.getElementById('total-orders').textContent = stats.total_orders;
+        document.getElementById('total-revenue').textContent = `${stats.total_revenue.toFixed(2)} BYN`;
+        document.getElementById('today-orders').textContent = stats.today_orders;
+        document.getElementById('reservation-orders').textContent = stats.reservation_orders || 0;
     }
     
     // Обновление статуса заказа
@@ -348,8 +314,8 @@
                 // Обновляем data-атрибут строки
                 document.querySelector(`[data-order-id="${orderId}"]`).closest('tr').setAttribute('data-status', newStatus);
                 
-                // Обновляем статистику
-                refreshStats();
+                // Обновляем статистику (особенно если статус изменился на "отменен")
+                refreshAdminData();
             } else {
                 showNotification(data.error || 'Ошибка обновления статуса', 'error');
             }
@@ -357,116 +323,6 @@
             showNotification('Ошибка сети', 'error');
         }
     }
-    
-    // Показать детали заказа
-    async function showOrderDetails(orderId) {
-        try {
-            const response = await fetch(`/api/order/${orderId}/details`);
-            const order = await response.json();
-            
-            let detailsHtml = `
-                <h3>Детали заказа #${order.id}</h3>
-                <div class="order-details-container">
-                    <div class="order-info">
-                        <p><strong>Клиент:</strong> ${order.username}</p>
-                        <p><strong>Дата:</strong> ${order.created_at}</p>
-                        <p><strong>Статус:</strong> <span class="status status-${order.status}">${getStatusText(order.status)}</span></p>
-                        <p><strong>Тип заказа:</strong> ${order.order_type === 'delivery' ? 'Доставка' : 'В ресторане'}</p>
-                        <p><strong>Телефон:</strong> ${order.phone}</p>
-                        ${order.delivery_address ? `<p><strong>Адрес доставки:</strong> ${order.delivery_address}</p>` : ''}
-                        ${order.notes ? `<p><strong>Комментарий:</strong> ${order.notes}</p>` : ''}
-                        <p><strong>Общая сумма:</strong> ${order.total_amount} BYN</p>
-                    </div>
-                    
-                    <h4>Состав заказа:</h4>
-                    <table class="order-items-table">
-                        <thead>
-                            <tr>
-                                <th>Блюдо</th>
-                                <th>Количество</th>
-                                <th>Цена</th>
-                                <th>Сумма</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            `;
-            
-            let total = 0;
-            order.items.forEach(item => {
-                const itemTotal = item.quantity * item.price_at_time;
-                total += itemTotal;
-                detailsHtml += `
-                    <tr>
-                        <td>${item.name}</td>
-                        <td>${item.quantity}</td>
-                        <td>${item.price_at_time} BYN</td>
-                        <td>${itemTotal} BYN</td>
-                    </tr>
-                `;
-            });
-            
-            detailsHtml += `
-                        </tbody>
-                        <tfoot>
-                            <tr>
-                                <td colspan="3" style="text-align: right; font-weight: bold;">Итого:</td>
-                                <td style="font-weight: bold;">${total} BYN</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-            `;
-            
-            // Информация о бронировании, если есть
-            if (order.reservation) {
-                detailsHtml += `
-                    <div class="reservation-info">
-                        <h4>Информация о бронировании:</h4>
-                        <p><strong>Столик №:</strong> ${order.reservation.table_number}</p>
-                        <p><strong>Время:</strong> ${order.reservation.start_time} - ${order.reservation.end_time}</p>
-                        <p><strong>Количество гостей:</strong> ${order.reservation.guests_count}</p>
-                    </div>
-                `;
-            }
-            
-            detailsHtml += `</div>`;
-            
-            document.getElementById('order-details-content').innerHTML = detailsHtml;
-            document.getElementById('order-details-modal').style.display = 'block';
-        } catch (error) {
-            showNotification('Ошибка загрузки деталей заказа', 'error');
-        }
-    }
-    
-    // Обновление статистики
-    async function refreshStats() {
-        try {
-            const response = await fetch('/api/admin/stats');
-            const stats = await response.json();
-            
-            document.getElementById('stat-total-orders').textContent = stats.total_orders;
-            document.getElementById('stat-pending-orders').textContent = stats.pending_orders;
-            document.getElementById('stat-total-revenue').textContent = `${stats.total_revenue.toFixed(2)} BYN`;
-            document.getElementById('stat-occupied-tables').textContent = `${stats.occupied_tables}/${stats.total_tables}`;
-        } catch (error) {
-            console.error('Ошибка обновления статистики:', error);
-        }
-    }
-    
-    // Автообновление статистики каждые 10 секунд
-    setInterval(refreshStats, 10000);
-    
-    // Закрытие модального окна
-    document.querySelector('.close-modal').addEventListener('click', function() {
-        document.getElementById('order-details-modal').style.display = 'none';
-    });
-    
-    // Закрытие модального окна при клике вне его
-    window.addEventListener('click', function(event) {
-        const modal = document.getElementById('order-details-modal');
-        if (event.target === modal) {
-            modal.style.display = 'none';
-        }
-    });
     
     // Функция для перевода статусов на русский
     function getStatusText(status) {
@@ -479,6 +335,97 @@
         };
         return statusMap[status] || status;
     }
+    
+    function showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.textContent = message;
+        
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            background-color: ${getNotificationColor(type)};
+            color: white;
+            border-radius: 5px;
+            z-index: 10000;
+            animation: slideIn 0.3s ease-out;
+        `;
+        
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.style.animation = 'slideOut 0.3s ease-out forwards';
+            setTimeout(() => notification.remove(), 300);
+        }, 3000);
+    }
+    
+    function getNotificationColor(type) {
+        const colors = {
+            success: '#27ae60',
+            error: '#e74c3c',
+            warning: '#f39c12',
+            info: '#3498db'
+        };
+        return colors[type] || colors.info;
+    }
+    
+    // Инициализация обновления
+    function initAutoRefresh() {
+        // Запускаем обновление каждые 10 секунд
+        refreshInterval = setInterval(refreshAdminData, 10000);
+        
+        // Первое обновление через 2 секунды после загрузки
+        setTimeout(refreshAdminData, 2000);
+    }
+    
+    // Остановка обновления
+    function stopAutoRefresh() {
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+            refreshInterval = null;
+        }
+    }
+    
+    // Запускаем при загрузке страницы
+    document.addEventListener('DOMContentLoaded', function() {
+        initAutoRefresh();
+        
+        // Фильтрация таблицы
+        document.getElementById('status-filter').addEventListener('change', filterTable);
+        document.getElementById('date-filter').addEventListener('change', filterTable);
+        
+        function filterTable() {
+            const statusFilter = document.getElementById('status-filter').value;
+            const dateFilter = document.getElementById('date-filter').value;
+            
+            document.querySelectorAll('.order-row').forEach(row => {
+                let show = true;
+                
+                if (statusFilter !== 'all' && row.getAttribute('data-status') !== statusFilter) {
+                    show = false;
+                }
+                
+                if (dateFilter && row.getAttribute('data-date') !== dateFilter) {
+                    show = false;
+                }
+                
+                row.style.display = show ? '' : 'none';
+            });
+        }
+        
+        // Останавливаем при уходе со страницы
+        window.addEventListener('beforeunload', stopAutoRefresh);
+        
+        // Также останавливаем при скрытии вкладки
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                stopAutoRefresh();
+            } else {
+                initAutoRefresh();
+            }
+        });
+    });
 </script>
-{% endblock %}
 {% endblock %}
