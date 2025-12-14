@@ -442,68 +442,99 @@ document.addEventListener('click', function(event) {
         event.target.style.display = 'none';
     }
 });
-// Добавить в конец существующего файла
+// Добавить в конец файла (перед последней закрывающей скобкой)
 
-// Функция для обновления статуса столиков
-window.updateTablesStatus = async function() {
+// Функция для получения информации о свободных местах
+window.updateAvailableSeats = function() {
+    fetch('/api/available_seats')
+        .then(response => response.json())
+        .then(data => {
+            const seatsElement = document.getElementById('available-seats-count');
+            if (seatsElement) {
+                seatsElement.textContent = data.available_seats;
+                
+                // Показываем уведомление, если мест мало
+                if (data.available_seats < 10) {
+                    showNotification(`Осталось всего ${data.available_seats} свободных мест!`, 'warning');
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка при получении информации о местах:', error);
+        });
+};
+
+// Функция оформления заказа в ресторане
+window.processDineInOrder = async function() {
+    const cart = getCartData();
+    if (cart.length === 0) {
+        showNotification('Корзина пуста', 'error');
+        return;
+    }
+    
+    const phone = document.getElementById('phone_dine')?.value;
+    const guestsCount = parseInt(document.getElementById('guests_count')?.value);
+    const reservationTime = document.getElementById('reservation_time')?.value;
+    const notes = document.getElementById('notes_dine')?.value;
+    
+    // Валидация
+    if (!phone || !reservationTime) {
+        showNotification('Заполните обязательные поля', 'error');
+        return;
+    }
+    
+    // Проверка формата телефона
+    const phoneRegex = /^\+375\s?\(?\d{2}\)?[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}$/;
+    if (!phoneRegex.test(phone)) {
+        showNotification('Введите корректный номер телефона (+375)', 'error');
+        return;
+    }
+    
+    // Проверка времени бронирования
+    const now = new Date();
+    const selectedTime = new Date(reservationTime);
+    if (selectedTime < now) {
+        showNotification('Нельзя выбрать прошедшее время', 'error');
+        return;
+    }
+    
     try {
-        const response = await fetch('/api/tables/status');
+        const response = await fetch('/order', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                items: cart,
+                phone: phone,
+                notes: notes,
+                order_type: 'dine_in',
+                reservation_time: reservationTime,
+                guests_count: guestsCount
+            })
+        });
+        
         const data = await response.json();
         
-        // Обновляем информацию о свободных местах
-        if (document.getElementById('available-seats')) {
-            document.getElementById('available-seats').textContent = data.available_seats;
-            document.getElementById('available-tables').textContent = data.available_tables;
-        }
-        
-        // Если есть резервации, обновляем их список
-        if (data.upcoming_reservations && document.getElementById('upcoming-reservations')) {
-            const container = document.getElementById('upcoming-reservations');
-            let html = '<h4>Ближайшие бронирования:</h4>';
-            if (data.upcoming_reservations.length > 0) {
-                data.upcoming_reservations.forEach(res => {
-                    html += `
-                        <div class="reservation-item">
-                            <span class="reservation-time">${res.time}</span>
-                            <span class="reservation-details">${res.guests} гостей, столик ${res.table}</span>
-                        </div>
-                    `;
-                });
-            } else {
-                html += '<p class="no-reservations">Нет ближайших бронирований</p>';
-            }
-            container.innerHTML = html;
+        if (response.ok) {
+            clearCart();
+            showNotification('Заказ и бронирование успешно созданы! Номер заказа: ' + data.order_id, 'success');
+            setTimeout(() => {
+                window.location.href = '/profile/orders';
+            }, 2000);
+        } else {
+            showNotification(data.error || 'Ошибка при создании заказа', 'error');
         }
     } catch (error) {
-        console.error('Ошибка обновления статуса столиков:', error);
+        showNotification('Ошибка сети. Проверьте подключение к интернету.', 'error');
     }
-}
+};
 
-// Функция для получения информации о столиках при оформлении заказа
-window.getTablesInfo = async function() {
-    try {
-        const response = await fetch('/api/tables/status');
-        return await response.json();
-    } catch (error) {
-        console.error('Ошибка получения информации о столиках:', error);
-        return null;
-    }
-}
-
-// Инициализация при загрузке страницы
+// Автообновление информации о свободных местах
 if (window.location.pathname.includes('/order')) {
-    document.addEventListener('DOMContentLoaded', function() {
-        // Обновляем информацию о столиках каждые 10 секунд
-        updateTablesStatus();
-        setInterval(updateTablesStatus, 10000);
-        
-        // Устанавливаем минимальную дату для бронирования
-        const now = new Date();
-        now.setHours(now.getHours() + 1);
-        const minDate = now.toISOString().slice(0, 16);
-        const reservationTimeInput = document.getElementById('reservation_time');
-        if (reservationTimeInput) {
-            reservationTimeInput.min = minDate;
-        }
-    });
+    // Обновляем при загрузке
+    updateAvailableSeats();
+    
+    // Обновляем каждые 10 секунд
+    setInterval(updateAvailableSeats, 10000);
 }
