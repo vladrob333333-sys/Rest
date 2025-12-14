@@ -23,11 +23,19 @@
         <div class="stats">
             <div class="stat-card">
                 <span class="stat-label">Всего заказов</span>
-                <span class="stat-value">{{ orders|length }}</span>
+                <span class="stat-value" id="stat-total-orders">{{ total_orders }}</span>
             </div>
             <div class="stat-card">
-                <span class="stat-label">На сумму</span>
-                <span class="stat-value">{{ "%.2f"|format(orders|sum(attribute='total_amount')) }}₽</span>
+                <span class="stat-label">Ожидают</span>
+                <span class="stat-value" id="stat-pending-orders">{{ pending_orders }}</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">За сегодня</span>
+                <span class="stat-value" id="stat-today-orders">{{ today_orders }}</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Общая выручка</span>
+                <span class="stat-value" id="stat-total-revenue">{{ "%.2f"|format(total_revenue) }} BYN</span>
             </div>
         </div>
     </div>
@@ -50,7 +58,7 @@
                     <td>#{{ order.id }}</td>
                     <td>{{ order.user.username }}</td>
                     <td>{{ order.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
-                    <td>{{ order.total_amount }}₽</td>
+                    <td>{{ order.total_amount }} BYN</td>
                     <td>
                         <span class="status status-{{ order.status }}">
                             {{ get_status_text(order.status) }}
@@ -109,6 +117,7 @@
     .stats {
         display: flex;
         gap: 15px;
+        flex-wrap: wrap;
     }
     
     .stat-card {
@@ -119,12 +128,14 @@
         display: flex;
         flex-direction: column;
         align-items: center;
+        min-width: 120px;
     }
     
     .stat-label {
         font-size: 0.9rem;
         color: var(--gray);
         margin-bottom: 5px;
+        text-align: center;
     }
     
     .stat-value {
@@ -233,9 +244,7 @@
         }
     }
 </style>
-{% endblock %}
 
-{% block scripts %}
 <script>
     // Фильтрация таблицы
     document.getElementById('status-filter').addEventListener('change', filterTable);
@@ -283,6 +292,9 @@
                 statusElement.textContent = getStatusText(newStatus);
                 // Обновляем data-атрибут строки
                 document.querySelector(`[data-order-id="${orderId}"]`).closest('tr').setAttribute('data-status', newStatus);
+                
+                // Обновляем статистику сразу после изменения статуса
+                await updateStatistics();
             } else {
                 showNotification(data.error || 'Ошибка обновления статуса', 'error');
             }
@@ -290,7 +302,25 @@
             showNotification('Ошибка сети', 'error');
         }
     }
-
+    
+    // Функция обновления статистики
+    async function updateStatistics() {
+        try {
+            const response = await fetch('/api/admin/stats');
+            const data = await response.json();
+            
+            // Обновляем значения статистики на странице
+            document.getElementById('stat-total-orders').textContent = data.total_orders;
+            document.getElementById('stat-pending-orders').textContent = data.pending_orders;
+            document.getElementById('stat-today-orders').textContent = data.today_orders;
+            document.getElementById('stat-total-revenue').textContent = data.total_revenue.toFixed(2) + ' BYN';
+            
+            console.log('Статистика обновлена:', data);
+        } catch (error) {
+            console.error('Ошибка обновления статистики:', error);
+        }
+    }
+    
     // Показать детали заказа
     async function showOrderDetails(orderId) {
         try {
@@ -349,37 +379,129 @@
         };
         return statusMap[status] || status;
     }
-
     
-// Функция обновления статистики
-    function updateStats(stats) {
-        const statCards = document.querySelectorAll('.stat-card');
-        if (statCards.length >= 4) {
-            statCards[0].querySelector('.stat-value').textContent = stats.total_orders;
-            statCards[1].querySelector('.stat-value').textContent = `${stats.total_revenue.toFixed(2)} BYN`;
-            // Если нужно добавить другие показатели
-            // statCards[2].querySelector('.stat-value').textContent = stats.pending_orders;
-            // statCards[3].querySelector('.stat-value').textContent = stats.today_orders;
-        }
+    // Глобальная переменная для интервала обновления
+    let refreshInterval;
+    
+    // Функция для обновления данных
+    function refreshAdminData() {
+        // Получаем текущие значения фильтров
+        const statusFilter = document.getElementById('status-filter').value;
+        const dateFilter = document.getElementById('date-filter').value;
         
-        // Обновляем статистику по статусам в фильтре
-        updateStatusStats(stats.status_stats);
+        // Обновляем список заказов
+        fetch(`/api/admin/orders/update?status=${statusFilter}&date=${dateFilter}`)
+            .then(response => response.json())
+            .then(data => {
+                updateOrdersTable(data);
+            })
+            .catch(error => console.error('Ошибка обновления заказов:', error));
+        
+        // Обновляем статистику
+        updateStatistics();
     }
     
-    // Функция обновления статистики по статусам
-    function updateStatusStats(statusStats) {
-        const statusFilter = document.getElementById('status-filter');
-        if (statusFilter) {
-            // Можно добавить отображение количества заказов рядом с каждым статусом
-            const options = statusFilter.querySelectorAll('option');
-            options.forEach(option => {
-                const status = option.value;
-                if (status !== 'all' && statusStats[status] !== undefined) {
-                    option.text = `${getStatusText(status)} (${statusStats[status]})`;
-                }
-            });
+    // Функция обновления таблицы заказов
+    function updateOrdersTable(orders) {
+        const tbody = document.querySelector('.orders-table tbody');
+        if (!tbody) return;
+        
+        let html = '';
+        orders.forEach(order => {
+            html += `
+                <tr class="order-row" data-status="${order.status}" data-date="${order.created_at.split(' ')[0].replace(/\./g, '-')}">
+                    <td>#${order.id}</td>
+                    <td>${order.username}</td>
+                    <td>${order.created_at}</td>
+                    <td>${order.total_amount} BYN</td>
+                    <td>
+                        <span class="status status-${order.status}">
+                            ${getStatusText(order.status)}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-small" onclick="showOrderDetails(${order.id})">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <select class="status-select" data-order-id="${order.id}" onchange="updateOrderStatus(${order.id}, this.value)">
+                            <option value="pending" ${order.status === 'pending' ? 'selected' : ''}>Ожидает</option>
+                            <option value="preparing" ${order.status === 'preparing' ? 'selected' : ''}>Готовится</option>
+                            <option value="ready" ${order.status === 'ready' ? 'selected' : ''}>Готов</option>
+                            <option value="delivered" ${order.status === 'delivered' ? 'selected' : ''}>Доставлен</option>
+                            <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Отменить</option>
+                        </select>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        tbody.innerHTML = html;
+    }
+    
+    // Инициализация обновления
+    function initAutoRefresh() {
+        // Запускаем обновление каждые 10 секунд
+        refreshInterval = setInterval(refreshAdminData, 10000);
+        
+        // Первое обновление через 2 секунды после загрузки
+        setTimeout(refreshAdminData, 2000);
+        
+        // Добавляем индикатор обновления
+        addRefreshIndicator();
+    }
+    
+    // Добавление индикатора обновления в заголовок
+    function addRefreshIndicator() {
+        const title = document.querySelector('.section-title');
+        if (title) {
+            const indicator = document.createElement('span');
+            indicator.id = 'refresh-indicator';
+            indicator.style.cssText = `
+                font-size: 0.8rem;
+                margin-left: 15px;
+                color: var(--primary-color);
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+            `;
+            indicator.innerHTML = '<i class="fas fa-sync-alt"></i> Обновление каждые 10 сек';
+            title.appendChild(indicator);
+            
+            // Анимация вращения иконки
+            setInterval(() => {
+                const icon = indicator.querySelector('i');
+                icon.style.transition = 'transform 0.5s';
+                icon.style.transform = 'rotate(360deg)';
+                setTimeout(() => {
+                    icon.style.transform = 'rotate(0deg)';
+                }, 500);
+            }, 10000);
         }
     }
     
+    // Остановка обновления
+    function stopAutoRefresh() {
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+            refreshInterval = null;
+        }
+    }
+    
+    // Запускаем при загрузке страницы
+    document.addEventListener('DOMContentLoaded', function() {
+        initAutoRefresh();
+        
+        // Останавливаем обновление при уходе со страницы
+        window.addEventListener('beforeunload', stopAutoRefresh);
+        
+        // Также останавливаем при скрытии вкладки
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                stopAutoRefresh();
+            } else {
+                initAutoRefresh();
+            }
+        });
+    });
 </script>
 {% endblock %}
