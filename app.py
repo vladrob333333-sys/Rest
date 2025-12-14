@@ -6,7 +6,7 @@ from datetime import datetime, date
 import json
 import os
 from sqlalchemy import desc, func
-from models import * 
+from models import *
 from database import db
 
 app = Flask(__name__)
@@ -410,26 +410,63 @@ def api_admin_orders_update():
     
     return jsonify(result)
 
-# API для получения статистики (для администратора)
+# Функция для получения статистики (для администратора)
+def get_admin_stats():
+    total_orders = Order.query.filter(Order.status != 'cancelled').count()
+    pending_orders = Order.query.filter_by(status='pending').count()
+    
+    # Заказы за сегодня, исключая отмененные
+    today_orders = Order.query.filter(
+        func.date(Order.created_at) == date.today(),
+        Order.status != 'cancelled'
+    ).count()
+    
+    # Общая выручка, исключая отмененные заказы
+    total_revenue = db.session.query(func.sum(Order.total_amount))\
+        .filter(Order.status != 'cancelled')\
+        .scalar() or 0
+    
+    # Статистика по статусам
+    status_stats = {}
+    for status in ['pending', 'preparing', 'ready', 'delivered', 'cancelled']:
+        count = Order.query.filter_by(status=status).count()
+        status_stats[status] = count
+    
+    return {
+        'total_orders': total_orders,
+        'pending_orders': pending_orders,
+        'today_orders': today_orders,
+        'total_revenue': float(total_revenue),
+        'status_stats': status_stats
+    }
+
+# API для получения статистики (для администратора) - только одно определение
 @app.route('/api/admin/stats')
 @login_required
 def api_admin_stats():
     if current_user.role != 'admin':
         abort(403)
     
-    total_orders = Order.query.count()
-    pending_orders = Order.query.filter_by(status='pending').count()
-    today_orders = Order.query.filter(func.date(Order.created_at) == date.today()).count()
-    total_revenue = db.session.query(func.sum(Order.total_amount)).scalar() or 0
-    
-    return jsonify({
-        'total_orders': total_orders,
-        'pending_orders': pending_orders,
-        'today_orders': today_orders,
-        'total_revenue': float(total_revenue)
-    })
+    stats = get_admin_stats()
+    return jsonify(stats)
 
-# Добавьте эти функции после существующих маршрутов:
+# Обновление статуса заказа
+@app.route('/admin/order/<int:order_id>/status', methods=['POST'])
+@login_required
+def update_order_status(order_id):
+    if current_user.role != 'admin':
+        abort(403)
+    
+    order = Order.query.get_or_404(order_id)
+    new_status = request.json.get('status')
+    
+    if new_status in ['pending', 'preparing', 'ready', 'delivered', 'cancelled']:
+        order.status = new_status
+        db.session.commit()
+        
+        return jsonify({'success': True})
+    
+    return jsonify({'error': 'Invalid status'}), 400
 
 # Страница управления меню для администратора
 @app.route('/admin/menu', methods=['GET', 'POST'])
@@ -555,77 +592,6 @@ def add_category():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
-
-# Обновим функцию get_admin_stats для правильного учета отмененных заказов
-def get_admin_stats():
-    from datetime import date
-    
-    total_orders = Order.query.filter(Order.status != 'cancelled').count()
-    pending_orders = Order.query.filter_by(status='pending').count()
-    
-    # Заказы за сегодня, исключая отмененные
-    today_orders = Order.query.filter(
-        db.func.date(Order.created_at) == date.today(),
-        Order.status != 'cancelled'
-    ).count()
-    
-    # Общая выручка, исключая отмененные заказы
-    total_revenue = db.session.query(db.func.sum(Order.total_amount))\
-        .filter(Order.status != 'cancelled')\
-        .scalar() or 0
-    
-    # Статистика по статусам
-    status_stats = {}
-    for status in ['pending', 'preparing', 'ready', 'delivered', 'cancelled']:
-        count = Order.query.filter_by(status=status).count()
-        status_stats[status] = count
-    
-    return {
-        'total_orders': total_orders,
-        'pending_orders': pending_orders,
-        'today_orders': today_orders,
-        'total_revenue': float(total_revenue),
-        'status_stats': status_stats
-    }
-
-# Обновим функцию api_admin_stats
-@app.route('/api/admin/stats')
-@login_required
-def api_admin_stats():
-    if current_user.role != 'admin':
-        abort(403)
-    
-    stats = get_admin_stats()
-    return jsonify(stats)
-
-# Обновим функцию admin_orders для передачи статистики
-@app.route('/admin/orders')
-@login_required
-def admin_orders():
-    if current_user.role != 'admin':
-        abort(403)
-    
-    orders = Order.query.order_by(Order.created_at.desc()).all()
-    stats = get_admin_stats()
-    return render_template('admin/orders.html', orders=orders, stats=stats)
-
-
-# Обновление статуса заказа
-@app.route('/admin/order/<int:order_id>/status', methods=['POST'])
-@login_required
-def update_order_status(order_id):
-    if current_user.role != 'admin':
-        abort(403)
-    
-    order = Order.query.get_or_404(order_id)
-    new_status = request.json.get('status')
-    
-    if new_status in ['pending', 'preparing', 'ready', 'delivered', 'cancelled']:
-        order.status = new_status
-        db.session.commit()
-        return jsonify({'success': True})
-    
-    return jsonify({'error': 'Invalid status'}), 400
 
 # Инициализация базы данных
 def init_db():
