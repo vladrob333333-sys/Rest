@@ -1,0 +1,482 @@
+{% extends "base.html" %}
+
+{% block title %}Управление меню - Ресторан "Гурман"{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="section-title">Управление меню</h1>
+    
+    <div class="admin-tabs">
+        <button class="tab-btn active" data-tab="add-item">Добавить блюдо</button>
+        <button class="tab-btn" data-tab="manage-items">Управление блюдами</button>
+        <button class="tab-btn" data-tab="categories">Категории</button>
+    </div>
+    
+    <!-- Вкладка добавления блюда -->
+    <div class="tab-content active" id="add-item">
+        <div class="form-container">
+            <h2>Добавить новое блюдо</h2>
+            <form method="POST" action="{{ url_for('admin_menu') }}" id="add-menu-item-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="name">Название блюда *</label>
+                        <input type="text" id="name" name="name" class="form-control" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="price">Цена (BYN) *</label>
+                        <input type="number" step="0.01" min="0" id="price" name="price" class="form-control" required>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="description">Описание</label>
+                    <textarea id="description" name="description" class="form-control" rows="3"></textarea>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="category_id">Категория *</label>
+                        <select id="category_id" name="category_id" class="form-control" required>
+                            <option value="">Выберите категорию</option>
+                            {% for category in categories %}
+                            <option value="{{ category.id }}">{{ category.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="image">URL изображения</label>
+                        <input type="text" id="image" name="image" class="form-control" placeholder="https://example.com/image.jpg">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="is_available" name="is_available" checked>
+                        Доступно для заказа
+                    </label>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">Добавить блюдо</button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Вкладка управления блюдами -->
+    <div class="tab-content" id="manage-items">
+        <div class="table-container">
+            <h2>Все блюда</h2>
+            <table class="menu-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Название</th>
+                        <th>Описание</th>
+                        <th>Цена</th>
+                        <th>Категория</th>
+                        <th>Статус</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in menu_items %}
+                    <tr data-item-id="{{ item.id }}">
+                        <td>{{ item.id }}</td>
+                        <td>
+                            <input type="text" class="edit-field" name="name" value="{{ item.name }}" data-original="{{ item.name }}">
+                        </td>
+                        <td>
+                            <textarea class="edit-field" name="description" rows="2" data-original="{{ item.description }}">{{ item.description }}</textarea>
+                        </td>
+                        <td>
+                            <input type="number" step="0.01" class="edit-field" name="price" value="{{ item.price }}" data-original="{{ item.price }}">
+                        </td>
+                        <td>
+                            <select class="edit-field" name="category_id" data-original="{{ item.category_id }}">
+                                {% for category in categories %}
+                                <option value="{{ category.id }}" {% if category.id == item.category_id %}selected{% endif %}>
+                                    {{ category.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <select class="edit-field" name="is_available" data-original="{{ item.is_available|int }}">
+                                <option value="1" {% if item.is_available %}selected{% endif %}>Доступно</option>
+                                <option value="0" {% if not item.is_available %}selected{% endif %}>Недоступно</option>
+                            </select>
+                        </td>
+                        <td>
+                            <button class="btn btn-small btn-success save-btn" style="display: none;">Сохранить</button>
+                            <button class="btn btn-small btn-danger delete-btn">Удалить</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- Вкладка категорий -->
+    <div class="tab-content" id="categories">
+        <div class="form-container">
+            <h2>Добавить новую категорию</h2>
+            <form id="add-category-form">
+                <div class="form-group">
+                    <label for="category_name">Название категории *</label>
+                    <input type="text" id="category_name" name="name" class="form-control" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="category_description">Описание категории</label>
+                    <textarea id="category_description" name="description" class="form-control" rows="2"></textarea>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">Добавить категорию</button>
+            </form>
+            
+            <div class="categories-list" style="margin-top: 30px;">
+                <h3>Существующие категории</h3>
+                <div class="categories-grid">
+                    {% for category in categories %}
+                    <div class="category-card">
+                        <h4>{{ category.name }}</h4>
+                        <p>{{ category.description or 'Без описания' }}</p>
+                        <small>{{ category.items|length }} блюд</small>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .admin-tabs {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 30px;
+        border-bottom: 2px solid var(--gray-light);
+        padding-bottom: 10px;
+    }
+    
+    .tab-btn {
+        padding: 10px 20px;
+        background: none;
+        border: none;
+        border-bottom: 3px solid transparent;
+        cursor: pointer;
+        font-weight: 500;
+        color: var(--gray);
+        transition: all 0.3s;
+    }
+    
+    .tab-btn.active {
+        color: var(--primary-color);
+        border-bottom-color: var(--primary-color);
+    }
+    
+    .tab-content {
+        display: none;
+    }
+    
+    .tab-content.active {
+        display: block;
+    }
+    
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .menu-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .menu-table th,
+    .menu-table td {
+        padding: 12px;
+        border-bottom: 1px solid var(--gray-light);
+        vertical-align: top;
+    }
+    
+    .menu-table th {
+        background-color: var(--primary-color);
+        color: white;
+        text-align: left;
+    }
+    
+    .menu-table tr:hover {
+        background-color: rgba(46, 139, 87, 0.05);
+    }
+    
+    .edit-field {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid var(--gray-light);
+        border-radius: 4px;
+        font-size: 0.9rem;
+    }
+    
+    .edit-field:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 2px rgba(46, 139, 87, 0.1);
+    }
+    
+    .edit-field.changed {
+        border-color: var(--warning);
+        background-color: rgba(243, 156, 18, 0.05);
+    }
+    
+    .categories-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .category-card {
+        background-color: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        border-left: 4px solid var(--primary-color);
+    }
+    
+    .category-card h4 {
+        margin-bottom: 10px;
+        color: var(--heading-color);
+    }
+    
+    .category-card p {
+        color: var(--gray);
+        font-size: 0.9rem;
+        margin-bottom: 10px;
+    }
+    
+    .category-card small {
+        color: var(--gray-dark);
+        font-size: 0.8rem;
+    }
+    
+    @media (max-width: 768px) {
+        .form-row {
+            grid-template-columns: 1fr;
+        }
+        
+        .menu-table {
+            display: block;
+            overflow-x: auto;
+        }
+        
+        .admin-tabs {
+            flex-direction: column;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Переключение вкладок
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                // Убираем активный класс у всех кнопок
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                // Добавляем активный класс текущей кнопке
+                this.classList.add('active');
+                
+                // Скрываем все вкладки
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.remove('active');
+                });
+                
+                // Показываем выбранную вкладку
+                const tabId = this.getAttribute('data-tab');
+                document.getElementById(tabId).classList.add('active');
+            });
+        });
+        
+        // Обработка изменений в полях редактирования
+        document.querySelectorAll('.edit-field').forEach(field => {
+            const originalValue = field.getAttribute('data-original');
+            const currentValue = field.value;
+            
+            field.addEventListener('input', function() {
+                const row = this.closest('tr');
+                const saveBtn = row.querySelector('.save-btn');
+                
+                if (this.value !== originalValue) {
+                    this.classList.add('changed');
+                    saveBtn.style.display = 'inline-block';
+                } else {
+                    this.classList.remove('changed');
+                    
+                    // Проверяем, есть ли другие измененные поля в строке
+                    const hasChanges = Array.from(row.querySelectorAll('.edit-field'))
+                        .some(f => f.value !== f.getAttribute('data-original'));
+                    
+                    if (!hasChanges) {
+                        saveBtn.style.display = 'none';
+                    }
+                }
+            });
+        });
+        
+        // Сохранение изменений блюда
+        document.querySelectorAll('.save-btn').forEach(btn => {
+            btn.addEventListener('click', async function() {
+                const row = this.closest('tr');
+                const itemId = row.getAttribute('data-item-id');
+                
+                const formData = new FormData();
+                formData.append('name', row.querySelector('[name="name"]').value);
+                formData.append('description', row.querySelector('[name="description"]').value);
+                formData.append('price', row.querySelector('[name="price"]').value);
+                formData.append('category_id', row.querySelector('[name="category_id"]').value);
+                formData.append('image', ''); // Пока не реализовано редактирование изображения
+                formData.append('is_available', row.querySelector('[name="is_available"]').value);
+                
+                try {
+                    const response = await fetch(`/admin/menu/${itemId}/edit`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        showNotification('Изменения сохранены', 'success');
+                        
+                        // Обновляем оригинальные значения
+                        row.querySelectorAll('.edit-field').forEach(field => {
+                            field.setAttribute('data-original', field.value);
+                            field.classList.remove('changed');
+                        });
+                        
+                        this.style.display = 'none';
+                    } else {
+                        showNotification(data.error || 'Ошибка сохранения', 'error');
+                    }
+                } catch (error) {
+                    showNotification('Ошибка сети', 'error');
+                }
+            });
+        });
+        
+        // Удаление блюда
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', async function() {
+                const row = this.closest('tr');
+                const itemId = row.getAttribute('data-item-id');
+                const itemName = row.querySelector('[name="name"]').value;
+                
+                if (!confirm(`Вы уверены, что хотите удалить блюдо "${itemName}"?`)) {
+                    return;
+                }
+                
+                try {
+                    const response = await fetch(`/admin/menu/${itemId}/delete`, {
+                        method: 'POST'
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        showNotification('Блюдо удалено', 'success');
+                        row.remove();
+                    } else {
+                        showNotification(data.error || 'Ошибка удаления', 'error');
+                    }
+                } catch (error) {
+                    showNotification('Ошибка сети', 'error');
+                }
+            });
+        });
+        
+        // Добавление новой категории
+        document.getElementById('add-category-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            
+            try {
+                const response = await fetch('/admin/categories/add', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showNotification('Категория добавлена', 'success');
+                    this.reset();
+                    
+                    // Перезагружаем страницу для обновления списка категорий
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1500);
+                } else {
+                    showNotification(data.error || 'Ошибка добавления категории', 'error');
+                }
+            } catch (error) {
+                showNotification('Ошибка сети', 'error');
+            }
+        });
+    });
+    
+    // Функция показа уведомлений
+    function showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.textContent = message;
+        
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            background-color: ${getNotificationColor(type)};
+            color: white;
+            border-radius: 5px;
+            z-index: 10000;
+            animation: slideIn 0.3s ease-out;
+        `;
+        
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.style.animation = 'slideOut 0.3s ease-out forwards';
+            setTimeout(() => notification.remove(), 300);
+        }, 3000);
+    }
+    
+    function getNotificationColor(type) {
+        const colors = {
+            success: '#27ae60',
+            error: '#e74c3c',
+            warning: '#f39c12',
+            info: '#3498db'
+        };
+        return colors[type] || colors.info;
+    }
+</script>
+
+<style>
+    @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    
+    @keyframes slideOut {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+    }
+</style>
+{% endblock %}
