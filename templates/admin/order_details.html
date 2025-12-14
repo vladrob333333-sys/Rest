@@ -1,0 +1,470 @@
+{% extends "base.html" %}
+
+{% block title %}Детали заказа #{{ order.id }} - Ресторан "Гурман"{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="order-details-header">
+        <h1 class="section-title">Детали заказа #{{ order.id }}</h1>
+        <a href="{{ url_for('admin_orders') }}" class="btn btn-outline">
+            <i class="fas fa-arrow-left"></i> Назад к заказам
+        </a>
+    </div>
+    
+    <div class="order-details-container">
+        <!-- Основная информация -->
+        <div class="order-info-card">
+            <h3>Информация о заказе</h3>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Статус:</span>
+                    <span class="info-value status status-{{ order.status }}">
+                        {{ get_status_text(order.status) }}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Тип заказа:</span>
+                    <span class="info-value">
+                        {% if order.order_type == 'delivery' %}
+                        <i class="fas fa-truck"></i> Доставка
+                        {% else %}
+                        <i class="fas fa-utensils"></i> Бронирование
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Дата создания:</span>
+                    <span class="info-value">{{ order.created_at.strftime('%d.%m.%Y %H:%M') }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Сумма заказа:</span>
+                    <span class="info-value">{{ order.total_amount }} BYN</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Клиент:</span>
+                    <span class="info-value">{{ order.user.username }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Email:</span>
+                    <span class="info-value">{{ order.user.email }}</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Контактная информация -->
+        <div class="order-info-card">
+            <h3>Контактная информация</h3>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Телефон:</span>
+                    <span class="info-value">{{ order.phone }}</span>
+                </div>
+                {% if order.delivery_address %}
+                <div class="info-item">
+                    <span class="info-label">Адрес доставки:</span>
+                    <span class="info-value">{{ order.delivery_address }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Информация о бронировании (если есть) -->
+        {% if order.reservation %}
+        <div class="order-info-card">
+            <h3>Информация о бронировании</h3>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Дата и время:</span>
+                    <span class="info-value">{{ order.reservation.reservation_time.strftime('%d.%m.%Y %H:%M') }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Количество гостей:</span>
+                    <span class="info-value">{{ order.reservation.guests_count }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Статус брони:</span>
+                    <span class="info-value">{{ order.reservation.status }}</span>
+                </div>
+                {% if order.reservation.table %}
+                <div class="info-item">
+                    <span class="info-label">Столик:</span>
+                    <span class="info-value">№{{ order.reservation.table.table_number }} ({{ order.reservation.table.seats }} мест)</span>
+                </div>
+                {% else %}
+                <div class="info-item">
+                    <span class="info-label">Столик:</span>
+                    <span class="info-value status status-pending">Не назначен</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Состав заказа -->
+        <div class="order-items-card">
+            <h3>Состав заказа</h3>
+            <table class="order-items-table">
+                <thead>
+                    <tr>
+                        <th>Блюдо</th>
+                        <th>Количество</th>
+                        <th>Цена за единицу</th>
+                        <th>Сумма</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in order.items %}
+                    <tr>
+                        <td>
+                            <div class="menu-item-info">
+                                <div class="menu-item-name">{{ item.menu_item.name }}</div>
+                                <div class="menu-item-description">{{ item.menu_item.description }}</div>
+                            </div>
+                        </td>
+                        <td>{{ item.quantity }}</td>
+                        <td>{{ item.price_at_time }} BYN</td>
+                        <td>{{ item.price_at_time * item.quantity }} BYN</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="3" class="total-label">Итого:</td>
+                        <td class="total-amount">{{ order.total_amount }} BYN</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        
+        <!-- Комментарий -->
+        {% if order.notes %}
+        <div class="order-info-card">
+            <h3>Комментарий клиента</h3>
+            <p class="order-notes">{{ order.notes }}</p>
+        </div>
+        {% endif %}
+        
+        <!-- Управление заказом -->
+        <div class="order-actions-card">
+            <h3>Управление заказом</h3>
+            <div class="action-buttons">
+                <div class="status-control">
+                    <label for="status-select">Изменить статус:</label>
+                    <select id="status-select" class="form-control" onchange="updateOrderStatus({{ order.id }}, this.value)">
+                        <option value="pending" {% if order.status == 'pending' %}selected{% endif %}>Ожидает обработки</option>
+                        <option value="preparing" {% if order.status == 'preparing' %}selected{% endif %}>Готовится</option>
+                        <option value="ready" {% if order.status == 'ready' %}selected{% endif %}>Готов к выдаче</option>
+                        <option value="delivered" {% if order.status == 'delivered' %}selected{% endif %}>Доставлен</option>
+                        <option value="cancelled" {% if order.status == 'cancelled' %}selected{% endif %}>Отменить</option>
+                    </select>
+                </div>
+                
+                {% if order.reservation and not order.reservation.table %}
+                <div class="table-assignment">
+                    <label for="table-select">Назначить столик:</label>
+                    <div class="table-assignment-controls">
+                        <select id="table-select" class="form-control">
+                            <option value="">Выберите столик</option>
+                            {% for i in range(1, 11) %}
+                            <option value="{{ i }}">Столик №{{ i }} (4 места)</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-primary" onclick="assignTable({{ order.reservation.id }})">
+                            Назначить
+                        </button>
+                    </div>
+                </div>
+                {% elif order.reservation and order.reservation.table %}
+                <div class="table-info">
+                    <p>Назначенный столик: №{{ order.reservation.table.table_number }}</p>
+                    <button class="btn btn-outline" onclick="freeTable({{ order.reservation.table.id }})">
+                        Освободить столик
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .order-details-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+    }
+    
+    .order-details-container {
+        display: grid;
+        gap: 20px;
+    }
+    
+    .order-info-card, .order-items-card, .order-actions-card {
+        background-color: white;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+    }
+    
+    .order-info-card h3, .order-items-card h3, .order-actions-card h3 {
+        margin-bottom: 20px;
+        color: var(--primary-color);
+        border-bottom: 2px solid var(--secondary-color);
+        padding-bottom: 10px;
+    }
+    
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 15px;
+    }
+    
+    .info-item {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .info-label {
+        font-weight: 500;
+        color: var(--gray-dark);
+        font-size: 0.9rem;
+        margin-bottom: 5px;
+    }
+    
+    .info-value {
+        font-size: 1rem;
+        color: var(--text-color);
+    }
+    
+    .order-items-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .order-items-table th {
+        background-color: var(--background-color);
+        padding: 12px 15px;
+        text-align: left;
+        font-weight: 600;
+        color: var(--heading-color);
+        border-bottom: 2px solid var(--gray-light);
+    }
+    
+    .order-items-table td {
+        padding: 15px;
+        border-bottom: 1px solid var(--gray-light);
+    }
+    
+    .order-items-table tfoot td {
+        border-top: 2px solid var(--gray-light);
+        border-bottom: none;
+    }
+    
+    .menu-item-info {
+        max-width: 300px;
+    }
+    
+    .menu-item-name {
+        font-weight: 500;
+        margin-bottom: 5px;
+    }
+    
+    .menu-item-description {
+        font-size: 0.9rem;
+        color: var(--gray);
+        line-height: 1.4;
+    }
+    
+    .total-label {
+        font-weight: 700;
+        text-align: right;
+        font-size: 1.1rem;
+    }
+    
+    .total-amount {
+        font-weight: 700;
+        color: var(--primary-color);
+        font-size: 1.2rem;
+    }
+    
+    .order-notes {
+        padding: 15px;
+        background-color: var(--background-color);
+        border-radius: 5px;
+        border-left: 3px solid var(--primary-color);
+        font-style: italic;
+        line-height: 1.6;
+    }
+    
+    .action-buttons {
+        display: grid;
+        gap: 20px;
+    }
+    
+    .status-control, .table-assignment {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .table-assignment-controls {
+        display: flex;
+        gap: 10px;
+        align-items: flex-end;
+    }
+    
+    .table-assignment-controls .form-control {
+        flex: 1;
+    }
+    
+    .table-info {
+        padding: 15px;
+        background-color: var(--background-color);
+        border-radius: 5px;
+        border-left: 3px solid var(--success);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .table-info p {
+        margin: 0;
+        font-weight: 500;
+    }
+    
+    @media (max-width: 768px) {
+        .order-details-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 15px;
+        }
+        
+        .info-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .table-assignment-controls {
+            flex-direction: column;
+        }
+        
+        .table-info {
+            flex-direction: column;
+            gap: 10px;
+            align-items: flex-start;
+        }
+    }
+</style>
+
+<script>
+    // Обновление статуса заказа
+    async function updateOrderStatus(orderId, newStatus) {
+        try {
+            const response = await fetch(`/admin/order/${orderId}/status`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ status: newStatus })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showNotification('Статус заказа обновлен', 'success');
+                // Обновляем отображаемый статус
+                const statusElement = document.querySelector('.status');
+                statusElement.className = `status status-${newStatus}`;
+                statusElement.textContent = getStatusText(newStatus);
+                
+                // Если статус изменен на "отменен", обновляем страницу
+                if (newStatus === 'cancelled') {
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1500);
+                }
+            } else {
+                showNotification(data.error || 'Ошибка обновления статуса', 'error');
+            }
+        } catch (error) {
+            showNotification('Ошибка сети', 'error');
+        }
+    }
+    
+    // Назначение столика для бронирования
+    async function assignTable(reservationId) {
+        const tableSelect = document.getElementById('table-select');
+        const tableId = tableSelect.value;
+        
+        if (!tableId) {
+            showNotification('Выберите столик', 'error');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/admin/reservation/${reservationId}/assign_table`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ table_id: tableId })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showNotification('Столик успешно назначен', 'success');
+                setTimeout(() => {
+                    location.reload();
+                }, 1500);
+            } else {
+                showNotification(data.error || 'Ошибка назначения столика', 'error');
+            }
+        } catch (error) {
+            showNotification('Ошибка сети', 'error');
+        }
+    }
+    
+    // Освобождение столика
+    async function freeTable(tableId) {
+        if (!confirm('Вы уверены, что хотите освободить этот столик?')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/admin/table/${tableId}/free`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({})
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showNotification('Столик успешно освобожден', 'success');
+                setTimeout(() => {
+                    location.reload();
+                }, 1500);
+            } else {
+                showNotification(data.error || 'Ошибка освобождения столика', 'error');
+            }
+        } catch (error) {
+            showNotification('Ошибка сети', 'error');
+        }
+    }
+    
+    // Вспомогательная функция для перевода статусов
+    function getStatusText(status) {
+        const statusMap = {
+            'pending': 'Ожидает обработки',
+            'preparing': 'Готовится',
+            'ready': 'Готов к выдаче',
+            'delivered': 'Доставлен',
+            'cancelled': 'Отменен'
+        };
+        return statusMap[status] || status;
+    }
+</script>
+{% endblock %}
