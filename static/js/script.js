@@ -363,3 +363,55 @@ window.processOrder = async function() {
 
 // Инициализация при загрузке страницы
 updateCartCount();
+
+// Добавить в конец файла
+
+// Валидация форм для администратора
+document.addEventListener('DOMContentLoaded', function() {
+    // Валидация цены в формах добавления/редактирования блюд
+    const priceInputs = document.querySelectorAll('input[name="price"]');
+    priceInputs.forEach(input => {
+        input.addEventListener('change', function() {
+            const value = parseFloat(this.value);
+            if (isNaN(value) || value <= 0) {
+                showError(this, 'Цена должна быть положительным числом', this.nextElementSibling);
+            } else {
+                clearError(this, this.nextElementSibling);
+            }
+        });
+    });
+    
+    // Валидация названия категории
+    const categoryNameInputs = document.querySelectorAll('input[name="name"]');
+    categoryNameInputs.forEach(input => {
+        input.addEventListener('blur', function() {
+            if (!this.value.trim()) {
+                showError(this, 'Название обязательно', this.nextElementSibling);
+            } else {
+                clearError(this, this.nextElementSibling);
+            }
+        });
+    });
+});
+
+// Функции для работы с модальными окнами
+window.showModal = function(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'block';
+    }
+};
+
+window.closeModal = function(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'none';
+    }
+};
+
+// Закрытие модальных окон при клике вне
+document.addEventListener('click', function(event) {
+    if (event.target.classList.contains('modal')) {
+        event.target.style.display = 'none';
+    }
+});
