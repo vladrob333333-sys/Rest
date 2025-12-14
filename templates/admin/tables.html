@@ -6,141 +6,148 @@
 <div class="container">
     <h1 class="section-title">Управление столиками</h1>
     
-    <!-- Статистика -->
-    <div class="tables-stats-cards">
-        <div class="stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-chair"></i>
+    <div class="tables-dashboard">
+        <!-- Статистика -->
+        <div class="tables-stats">
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-chair"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Всего столиков</span>
+                    <span class="stat-value">{{ tables|length }}</span>
+                </div>
             </div>
-            <div class="stat-info">
-                <span class="stat-label">Всего столиков</span>
-                <span class="stat-value">{{ tables|length }}</span>
+            <div class="stat-card">
+                <div class="stat-icon available">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Свободно</span>
+                    <span class="stat-value">{{ tables|selectattr('is_available')|list|length }}</span>
+                </div>
             </div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-user-friends"></i>
-            </div>
-            <div class="stat-info">
-                <span class="stat-label">Всего мест</span>
-                <span class="stat-value">{{ tables|sum(attribute='seats') }}</span>
-            </div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-calendar-check"></i>
-            </div>
-            <div class="stat-info">
-                <span class="stat-label">Активные брони</span>
-                <span class="stat-value">{{ reservations|selectattr('status', 'equalto', 'active')|list|length }}</span>
-            </div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-clock"></i>
-            </div>
-            <div class="stat-info">
-                <span class="stat-label">Ожидают подтверждения</span>
-                <span class="stat-value">{{ reservations|selectattr('status', 'equalto', 'pending')|list|length }}</span>
+            <div class="stat-card">
+                <div class="stat-icon reserved">
+                    <i class="fas fa-times-circle"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Занято</span>
+                    <span class="stat-value">{{ tables|rejectattr('is_available')|list|length }}</span>
+                </div>
             </div>
         </div>
-    </div>
-    
-    <div class="tables-management">
+        
         <!-- Список столиков -->
-        <div class="tables-list-section">
-            <h2>Столики (10 шт по 4 места)</h2>
-            <div class="tables-grid">
+        <div class="tables-grid">
+            <h2>Столики ({{ tables|length }} шт, по 4 места каждый)</h2>
+            <div class="tables-list">
                 {% for table in tables %}
-                <div class="table-card {% if table.is_reserved %}reserved{% else %}available{% endif %}">
+                <div class="table-card {% if table.is_available %}available{% else %}reserved{% endif %}">
                     <div class="table-header">
-                        <h3>Столик №{{ table.table_number }}</h3>
+                        <h3>Столик #{{ table.table_number }}</h3>
                         <span class="table-status">
-                            {% if table.is_reserved %}
-                            <span class="status status-reserved">Занят</span>
+                            {% if table.is_available %}
+                            <i class="fas fa-check"></i> Свободен
                             {% else %}
-                            <span class="status status-available">Свободен</span>
+                            <i class="fas fa-times"></i> Занят
                             {% endif %}
                         </span>
                     </div>
                     <div class="table-info">
-                        <p><i class="fas fa-users"></i> Мест: {{ table.seats }}</p>
-                        {% if table.is_reserved %}
-                        <p class="reservation-info">
-                            {% set table_reservation = reservations|selectattr('table_id', 'equalto', table.id)|first %}
-                            {% if table_reservation %}
-                            Бронь: {{ table_reservation.reservation_time.strftime('%d.%m.%Y %H:%M') }}<br>
-                            Гостей: {{ table_reservation.guests_count }}
+                        <div class="table-detail">
+                            <i class="fas fa-user-friends"></i>
+                            <span>{{ table.seats }} мест</span>
+                        </div>
+                        <div class="table-actions">
+                            {% if table.is_available %}
+                            <button class="btn btn-small btn-outline" onclick="markTableOccupied({{ table.id }})">
+                                <i class="fas fa-user-clock"></i> Отметить занятым
+                            </button>
+                            {% else %}
+                            <button class="btn btn-small btn-primary" onclick="freeTable({{ table.id }})">
+                                <i class="fas fa-door-open"></i> Освободить столик
+                            </button>
                             {% endif %}
-                        </p>
-                        {% endif %}
-                    </div>
-                    <div class="table-actions">
-                        {% if table.is_reserved %}
-                        <button class="btn btn-small btn-outline" onclick="freeTable({{ table.id }})">
-                            Освободить
-                        </button>
-                        {% endif %}
+                        </div>
                     </div>
                 </div>
                 {% endfor %}
             </div>
         </div>
         
-        <!-- Список бронирований -->
+        <!-- Бронирования -->
         <div class="reservations-section">
-            <h2>Бронирования</h2>
+            <h2>Активные бронирования</h2>
+            {% if reservations %}
             <div class="reservations-list">
                 {% for reservation in reservations %}
                 <div class="reservation-card">
                     <div class="reservation-header">
-                        <h4>Бронь #{{ reservation.id }}</h4>
+                        <h4>Бронирование #{{ reservation.id }}</h4>
                         <span class="reservation-status status-{{ reservation.status }}">
-                            {{ reservation.status }}
+                            {{ get_status_text(reservation.status) }}
                         </span>
                     </div>
-                    <div class="reservation-info">
-                        <p><i class="far fa-clock"></i> {{ reservation.reservation_time.strftime('%d.%m.%Y %H:%M') }}</p>
-                        <p><i class="fas fa-users"></i> Гостей: {{ reservation.guests_count }}</p>
-                        <p><i class="fas fa-user"></i> Клиент: {{ reservation.user.username }}</p>
-                        {% if reservation.table %}
-                        <p><i class="fas fa-chair"></i> Столик: №{{ reservation.table.table_number }}</p>
-                        {% else %}
-                        <p><i class="fas fa-question-circle"></i> Столик: Не назначен</p>
-                        {% endif %}
-                    </div>
-                    <div class="reservation-actions">
-                        {% if not reservation.table_id and reservation.status == 'pending' %}
-                        <div class="table-assignment">
-                            <select class="form-control form-control-sm" id="table-select-{{ reservation.id }}">
-                                <option value="">Выберите столик</option>
-                                {% for table in tables if not table.is_reserved and table.seats >= reservation.guests_count %}
-                                <option value="{{ table.id }}">№{{ table.table_number }} ({{ table.seats }} мест)</option>
-                                {% endfor %}
-                            </select>
-                            <button class="btn btn-small btn-primary" onclick="assignTableToReservation({{ reservation.id }})">
-                                Назначить
-                            </button>
+                    <div class="reservation-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Столик:</span>
+                            <span class="detail-value">#{{ reservation.table.table_number }}</span>
                         </div>
-                        {% endif %}
-                        <a href="{{ url_for('admin_order_details', order_id=reservation.order_id) }}" 
-                           class="btn btn-small btn-outline">
-                            К заказу
-                        </a>
+                        <div class="detail-item">
+                            <span class="detail-label">Клиент:</span>
+                            <span class="detail-value">{{ reservation.user.username }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Время брони:</span>
+                            <span class="detail-value">{{ reservation.reservation_time.strftime('%d.%m.%Y %H:%M') }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Гостей:</span>
+                            <span class="detail-value">{{ reservation.guests_count }} чел.</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Длительность:</span>
+                            <span class="detail-value">{{ reservation.duration_hours }} часа</span>
+                        </div>
+                    </div>
+                    {% if reservation.notes %}
+                    <div class="reservation-notes">
+                        <span class="notes-label">Примечания:</span>
+                        <p>{{ reservation.notes }}</p>
+                    </div>
+                    {% endif %}
+                    <div class="reservation-actions">
+                        <button class="btn btn-small btn-outline" onclick="completeReservation({{ reservation.id }})">
+                            <i class="fas fa-check"></i> Завершить
+                        </button>
+                        <button class="btn btn-small btn-outline btn-danger" onclick="cancelReservation({{ reservation.id }})">
+                            <i class="fas fa-times"></i> Отменить
+                        </button>
                     </div>
                 </div>
                 {% endfor %}
             </div>
+            {% else %}
+            <div class="no-reservations">
+                <i class="fas fa-calendar-times"></i>
+                <p>Нет активных бронирований</p>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
 
 <style>
-    .tables-stats-cards {
+    .tables-dashboard {
+        display: grid;
+        gap: 30px;
+    }
+    
+    .tables-stats {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 20px;
-        margin-bottom: 30px;
     }
     
     .stat-card {
@@ -156,13 +163,21 @@
     .stat-icon {
         width: 50px;
         height: 50px;
+        border-radius: 50%;
         background-color: var(--primary-color);
-        border-radius: 10px;
         display: flex;
         align-items: center;
         justify-content: center;
         color: white;
         font-size: 1.5rem;
+    }
+    
+    .stat-icon.available {
+        background-color: var(--success);
+    }
+    
+    .stat-icon.reserved {
+        background-color: var(--danger);
     }
     
     .stat-info {
@@ -173,26 +188,19 @@
     .stat-label {
         font-size: 0.9rem;
         color: var(--gray);
-        margin-bottom: 5px;
     }
     
     .stat-value {
         font-size: 1.5rem;
         font-weight: 700;
-        color: var(--primary-color);
+        color: var(--heading-color);
     }
     
-    .tables-management {
+    .tables-list {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 30px;
-    }
-    
-    .tables-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-        gap: 15px;
-        margin-top: 15px;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
     }
     
     .table-card {
@@ -200,12 +208,15 @@
         padding: 20px;
         border-radius: 10px;
         box-shadow: 0 3px 10px rgba(0,0,0,0.1);
-        border-left: 5px solid var(--success);
+        border-left: 5px solid var(--gray);
+    }
+    
+    .table-card.available {
+        border-left-color: var(--success);
     }
     
     .table-card.reserved {
         border-left-color: var(--danger);
-        opacity: 0.8;
     }
     
     .table-header {
@@ -217,64 +228,53 @@
     
     .table-header h3 {
         margin: 0;
-        font-size: 1.2rem;
         color: var(--heading-color);
     }
     
-    .table-status .status {
-        padding: 3px 10px;
-        border-radius: 15px;
-        font-size: 0.8rem;
+    .table-status {
+        font-size: 0.9rem;
         font-weight: 500;
     }
     
-    .status-available {
-        background-color: var(--success);
-        color: white;
+    .table-card.available .table-status {
+        color: var(--success);
     }
     
-    .status-reserved {
-        background-color: var(--danger);
-        color: white;
+    .table-card.reserved .table-status {
+        color: var(--danger);
     }
     
     .table-info {
-        margin-bottom: 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }
     
-    .table-info p {
-        margin: 5px 0;
-        font-size: 0.9rem;
+    .table-detail {
         display: flex;
         align-items: center;
         gap: 8px;
+        color: var(--gray-dark);
     }
     
-    .reservation-info {
-        font-size: 0.8rem !important;
-        color: var(--gray);
-        margin-top: 10px !important;
-        padding-top: 10px;
-        border-top: 1px solid var(--gray-light);
-    }
-    
-    .table-actions {
-        display: flex;
-        gap: 10px;
+    .reservations-section {
+        background-color: white;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
     }
     
     .reservations-list {
         display: grid;
         gap: 15px;
-        margin-top: 15px;
+        margin-top: 20px;
     }
     
     .reservation-card {
-        background-color: white;
+        background-color: var(--background-color);
         padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
-        border-left: 5px solid var(--primary-color);
+        border-radius: 8px;
+        border-left: 4px solid var(--primary-color);
     }
     
     .reservation-header {
@@ -289,94 +289,122 @@
         color: var(--heading-color);
     }
     
-    .reservation-status {
-        padding: 3px 10px;
-        border-radius: 15px;
-        font-size: 0.8rem;
-        font-weight: 500;
-        text-transform: capitalize;
+    .reservation-details {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 10px;
+        margin-bottom: 15px;
     }
     
-    .status-pending {
-        background-color: var(--warning);
-        color: white;
-    }
-    
-    .status-active {
-        background-color: var(--success);
-        color: white;
-    }
-    
-    .status-cancelled {
-        background-color: var(--danger);
-        color: white;
-    }
-    
-    .reservation-info p {
-        margin: 5px 0;
-        font-size: 0.9rem;
+    .detail-item {
         display: flex;
-        align-items: center;
-        gap: 8px;
+        flex-direction: column;
+    }
+    
+    .detail-label {
+        font-size: 0.8rem;
+        color: var(--gray);
+    }
+    
+    .detail-value {
+        font-weight: 500;
+    }
+    
+    .reservation-notes {
+        margin-bottom: 15px;
+        padding: 10px;
+        background-color: white;
+        border-radius: 5px;
+    }
+    
+    .notes-label {
+        font-weight: 500;
+        color: var(--gray-dark);
+        display: block;
+        margin-bottom: 5px;
     }
     
     .reservation-actions {
         display: flex;
         gap: 10px;
-        margin-top: 15px;
-        flex-wrap: wrap;
     }
     
-    .table-assignment {
-        display: flex;
-        gap: 10px;
-        width: 100%;
+    .no-reservations {
+        text-align: center;
+        padding: 40px;
+        color: var(--gray);
     }
     
-    .table-assignment select {
-        flex: 1;
+    .no-reservations i {
+        font-size: 3rem;
+        margin-bottom: 15px;
+        display: block;
     }
     
-    .btn-small {
-        padding: 5px 10px;
-        font-size: 0.9rem;
+    .btn-danger {
+        background-color: var(--danger);
+        color: white;
+        border-color: var(--danger);
     }
     
-    @media (max-width: 992px) {
-        .tables-management {
-            grid-template-columns: 1fr;
-        }
-        
-        .tables-grid {
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-        }
+    .btn-danger:hover {
+        background-color: #c0392b;
+        border-color: #c0392b;
     }
     
     @media (max-width: 768px) {
-        .tables-stats-cards {
-            grid-template-columns: 1fr 1fr;
+        .tables-list {
+            grid-template-columns: 1fr;
         }
         
-        .table-assignment {
+        .reservation-details {
+            grid-template-columns: 1fr;
+        }
+        
+        .reservation-header {
             flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
         }
     }
 </style>
 
 <script>
-    // Освобождение столика
+    // Отметить столик занятым
+    async function markTableOccupied(tableId) {
+        try {
+            const response = await fetch(`/admin/table/${tableId}/status`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ status: 'occupied' })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showNotification('Столик отмечен как занятый', 'success');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showNotification(data.error || 'Ошибка обновления статуса', 'error');
+            }
+        } catch (error) {
+            showNotification('Ошибка сети', 'error');
+        }
+    }
+    
+    // Освободить столик
     async function freeTable(tableId) {
-        if (!confirm('Вы уверены, что хотите освободить этот столик?')) {
+        if (!confirm('Освободить этот столик? Все связанные бронирования будут отменены.')) {
             return;
         }
         
         try {
             const response = await fetch(`/admin/table/${tableId}/free`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({})
+                method: 'POST'
             });
             
             const data = await response.json();
@@ -384,8 +412,8 @@
             if (response.ok) {
                 showNotification('Столик успешно освобожден', 'success');
                 setTimeout(() => {
-                    location.reload();
-                }, 1500);
+                    window.location.reload();
+                }, 1000);
             } else {
                 showNotification(data.error || 'Ошибка освобождения столика', 'error');
             }
@@ -394,46 +422,20 @@
         }
     }
     
-    // Назначение столика для бронирования
-    async function assignTableToReservation(reservationId) {
-        const tableSelect = document.getElementById(`table-select-${reservationId}`);
-        const tableId = tableSelect.value;
-        
-        if (!tableId) {
-            showNotification('Выберите столик', 'error');
+    // Завершить бронирование
+    async function completeReservation(reservationId) {
+        // Здесь можно добавить API endpoint для завершения бронирования
+        showNotification('Функция в разработке', 'info');
+    }
+    
+    // Отменить бронирование
+    async function cancelReservation(reservationId) {
+        if (!confirm('Отменить это бронирование?')) {
             return;
         }
         
-        try {
-            const response = await fetch(`/admin/reservation/${reservationId}/assign_table`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ table_id: tableId })
-            });
-            
-            const data = await response.json();
-            
-            if (response.ok) {
-                showNotification('Столик успешно назначен', 'success');
-                setTimeout(() => {
-                    location.reload();
-                }, 1500);
-            } else {
-                showNotification(data.error || 'Ошибка назначения столика', 'error');
-            }
-        } catch (error) {
-            showNotification('Ошибка сети', 'error');
-        }
+        // Здесь можно добавить API endpoint для отмены бронирования
+        showNotification('Функция в разработке', 'info');
     }
-    
-    // Автоматическое обновление статуса столиков каждые 10 секунд
-    document.addEventListener('DOMContentLoaded', function() {
-        setInterval(() => {
-            // Здесь можно добавить автоматическое обновление
-            // или оставить как есть для ручного обновления
-        }, 10000);
-    });
 </script>
 {% endblock %}
