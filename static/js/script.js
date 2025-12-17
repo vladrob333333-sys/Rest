@@ -198,7 +198,7 @@ function initCart() {
                             <span>${item.quantity}</span>
                             <button class="quantity-btn" onclick="updateQuantity(${item.id}, 1)">+</button>
                         </div>
-                        <div class="item-total">${itemTotal}₽</div>
+                        <div class="item-total">${itemTotal}BYN</div>
                         <button class="btn btn-small btn-outline" onclick="removeFromCart(${item.id})">Удалить</button>
                     </div>
                 `;
