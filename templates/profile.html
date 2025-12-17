@@ -25,7 +25,7 @@
                         <div class="order-item">
                             <span class="item-name">{{ item.menu_item.name }}</span>
                             <span class="item-quantity">× {{ item.quantity }}</span>
-                            <span class="item-price">{{ item.price_at_time * item.quantity }}₽</span>
+                            <span class="item-price">{{ item.price_at_time * item.quantity }}BYN</span>
                         </div>
                         {% endfor %}
                     </div>
@@ -51,7 +51,7 @@
                 <div class="order-footer">
                     <div class="order-total">
                         <span>Итого:</span>
-                        <span class="total-amount">{{ order.total_amount }}₽</span>
+                        <span class="total-amount">{{ order.total_amount }}BYN</span>
                     </div>
                 </div>
             </div>
