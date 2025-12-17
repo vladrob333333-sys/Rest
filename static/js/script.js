@@ -191,7 +191,7 @@ function initCart() {
                     <div class="cart-item">
                         <div class="item-info">
                             <h4>${item.name}</h4>
-                            <p class="item-price">${item.price}₽ × ${item.quantity}</p>
+                            <p class="item-price">${item.price}BYN × ${item.quantity}</p>
                         </div>
                         <div class="item-quantity">
                             <button class="quantity-btn" onclick="updateQuantity(${item.id}, -1)">-</button>
@@ -265,7 +265,7 @@ function renderMenu(categories) {
                         <h4>${item.name}</h4>
                         <p class="item-description">${item.description}</p>
                         <div class="item-footer">
-                            <span class="item-price">${item.price}₽</span>
+                            <span class="item-price">${item.price}BYN</span>
                             <button class="btn btn-small" onclick="addToCart(${item.id}, '${item.name.replace(/'/g, "\\'")}', ${item.price}, '${item.image || ''}')">
                                 В корзину
                             </button>
